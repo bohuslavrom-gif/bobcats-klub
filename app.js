@@ -7,7 +7,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY)
 /* ============ stav ============ */
 const S = {
   user: null, me: null,
-  profiles: [], teams: [], tasks: [], events: [], lists: [], items: [], memberships: [],
+  profiles: [], teams: [], tasks: [], events: [], lists: [], items: [], memberships: [], notes: [],
   view: 'dash',
   filter: { who: 'all', team: '', status: 'open', q: '' },
   cal: new Date(),
@@ -52,7 +52,7 @@ const CHK = { done: 'Máme', partial: 'Částečně', missing: 'Chybí' }
 
 /* ============ data ============ */
 async function loadAll() {
-  const [pr, tm, tk, ev, cl, ci, ms] = await Promise.all([
+  const [pr, tm, tk, ev, cl, ci, ms, nt] = await Promise.all([
     sb.from('bc_profile').select('*').order('full_name'),
     sb.from('bc_team').select('*').order('sort'),
     sb.from('bc_task').select('*').order('due_date', { nullsFirst: false }),
@@ -60,10 +60,11 @@ async function loadAll() {
     sb.from('bc_checklist').select('*').order('sort'),
     sb.from('bc_checklist_item').select('*').order('sort'),
     sb.from('bc_membership').select('*'),
+    sb.from('bc_notification').select('*').order('created_at', { ascending: false }).limit(40),
   ])
   S.profiles = pr.data || []; S.teams = tm.data || []; S.tasks = tk.data || []
   S.events = ev.data || []; S.lists = cl.data || []; S.items = ci.data || []
-  S.memberships = ms.data || []
+  S.memberships = ms.data || []; S.notes = nt.data || []
   S.me = S.profiles.find(p => p.id === S.user.id) || S.me
   S.seesAll = !!S.me.is_admin || S.memberships.some(m => m.profile_id === S.me.id && S.teams.find(t => t.id === m.team_id)?.kind === 'vybor')
   S.myTeams = S.memberships.filter(m => m.profile_id === S.me.id).map(m => m.team_id)
@@ -191,6 +192,10 @@ function renderShell() {
     <div class="brand"><img src="./logo-white.png"><div><b>Příbram Bobcats</b><span>Řízení klubu</span></div></div>
     <nav class="nav">${NAV.filter(([k]) => k !== 'check' || S.seesAll).map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
     <div class="me">
+      <div class="bell" id="bell" title="Upozornění">
+        <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path fill="currentColor" d="M12 22a2.1 2.1 0 0 0 2.1-2.1H9.9A2.1 2.1 0 0 0 12 22Zm6.3-6.3v-5.2c0-3.2-1.7-5.9-4.7-6.6v-.7a1.6 1.6 0 0 0-3.2 0v.7c-3 .7-4.7 3.4-4.7 6.6v5.2L3.6 17.5v.9h16.8v-.9Z"/></svg>
+        ${unreadCount() ? `<i class="dot">${unreadCount() > 9 ? '9+' : unreadCount()}</i>` : ''}
+      </div>
       <div class="who"><b>${esc(S.me.full_name || S.me.email)}</b><span>${esc(S.me.role_title || (S.me.is_admin ? 'správce' : 'člen'))}</span></div>
       <button class="btn ghost sm" id="logout">Odhlásit</button>
     </div>
@@ -198,6 +203,50 @@ function renderShell() {
   <main id="main"></main>`
   document.querySelectorAll('.nav button').forEach(b => b.onclick = () => { S.view = b.dataset.v; render() })
   $('#logout').onclick = async () => { await sb.auth.signOut(); location.reload() }
+  $('#bell').onclick = e => { e.stopPropagation(); toggleNotes() }
+}
+
+/* ============ upozornění ============ */
+const unreadCount = () => S.notes.filter(n => !n.read_at).length
+async function refreshNotes(rerender) {
+  const { data } = await sb.from('bc_notification').select('*').order('created_at', { ascending: false }).limit(40)
+  const before = unreadCount()
+  S.notes = data || []
+  if (rerender && unreadCount() !== before) render()
+}
+function noteText(n) {
+  const who = personName(n.actor_id) || 'Někdo'
+  if (n.kind === 'assigned') return `<b>${esc(who)}</b> ti přidělil úkol <em>${esc(n.task_title)}</em>`
+  return `<b>${esc(who)}</b> okomentoval úkol <em>${esc(n.task_title)}</em>${n.body ? `<span class="q">„${esc(n.body)}"</span>` : ''}`
+}
+function toggleNotes() {
+  const open = $('#npanel')
+  if (open) return open.remove()
+  const p = el('div', 'npanel'); p.id = 'npanel'
+  const unread = unreadCount()
+  p.innerHTML = `<div class="nph"><b>Upozornění</b>${unread ? '<button class="lnk" id="nall">Označit vše jako přečtené</button>' : ''}</div>`
+  const list = el('div', 'nlist')
+  if (!S.notes.length) list.appendChild(el('div', 'empty sm', 'Zatím nic nového.'))
+  S.notes.forEach(n => {
+    const r = el('div', 'nrow' + (n.read_at ? '' : ' new'), `<div class="nb">${noteText(n)}</div><span class="nt">${fmtDateTime(n.created_at)}</span>`)
+    r.onclick = async () => {
+      p.remove()
+      if (!n.read_at) { await sb.from('bc_notification').update({ read_at: new Date().toISOString() }).eq('id', n.id); await refreshNotes() }
+      const t = S.tasks.find(x => x.id === n.task_id)
+      if (t) { S.view = 'tasks'; render(); openTask(t) }
+      else { render(); toast('Úkol už není dostupný', true) }
+    }
+    list.appendChild(r)
+  })
+  p.appendChild(list)
+  document.body.appendChild(p)
+  const close = ev => { if (!p.contains(ev.target)) { p.remove(); document.removeEventListener('click', close) } }
+  setTimeout(() => document.addEventListener('click', close), 0)
+  if (unread) $('#nall', p).onclick = async ev => {
+    ev.stopPropagation(); p.remove()
+    await sb.from('bc_notification').update({ read_at: new Date().toISOString() }).is('read_at', null)
+    await refreshNotes(); render()
+  }
 }
 function render() {
   renderShell()
@@ -285,14 +334,19 @@ function viewDash(m) {
   }
 }
 
+// upravovat a mazat smí jen zadavatel, správce navíc pro případ nouze
+const canEdit = t => !t || !t.created_by || t.created_by === S.me.id || S.me.is_admin
+const prioTag = p => p === 'high' ? '<i class="pr hi" title="Vysoká priorita">Vysoká</i>'
+  : p === 'low' ? '<i class="pr lo" title="Nízká priorita">Nízká</i>' : ''
+
 function taskRow(t, compact) {
   const dl = daysLeft(t.due_date)
   const late = t.status !== 'done' && t.due_date && t.due_date < today()
-  const r = el('div', 'trow' + (t.status === 'done' ? ' done' : '') + (late ? ' late' : ''))
+  const r = el('div', 'trow p-' + (t.priority || 'normal') + (t.status === 'done' ? ' done' : '') + (late ? ' late' : ''))
   r.innerHTML = `
     <button class="chk" title="Označit jako hotové">${t.status === 'done' ? '✓' : ''}</button>
     <div class="tb">
-      <b>${esc(t.title)}</b>
+      <b>${prioTag(t.priority)}${esc(t.title)}</b>
       <span>${t.team_id ? esc(teamName(t.team_id)) : 'Bez týmu'}${t.assignee_id ? ' · ' + esc(personName(t.assignee_id)) : ''}${t.recurrence !== 'none' ? ' · ' + REC[t.recurrence].toLowerCase() : ''}</span>
     </div>
     <div class="td ${late ? 'l' : ''}">${t.due_date ? fmtDate(t.due_date) : '—'}${!compact || !t.due_date ? '' : `<em>${late ? `${-dl} dní po` : dl === 0 ? 'dnes' : `za ${dl} dní`}</em>`}</div>`
@@ -373,18 +427,21 @@ function renderTaskList() {
 /* ============ detail úkolu ============ */
 async function openTask(t) {
   const isNew = !t
+  const ro = !canEdit(t)
+  const d = ro ? ' disabled' : ''
   const cmts = isNew ? [] : (await sb.from('bc_task_comment').select('*').eq('task_id', t.id).order('created_at')).data || []
   modal(`${isNew ? 'Nový úkol' : 'Úkol'}`, `
-    <label>Název úkolu<input id="m_title" value="${esc(t?.title)}" placeholder="Co je potřeba udělat"></label>
-    <label>Popis<textarea id="m_detail" rows="3" placeholder="Doplňující informace">${esc(t?.detail)}</textarea></label>
+    ${ro ? `<p class="ronote">Úkol zadal <b>${esc(personName(t.created_by) || 'někdo jiný')}</b>, takže ho může upravovat a mazat jen on. Ty ho můžeš označit jako hotový a psát k němu poznámky.</p>` : ''}
+    <label>Název úkolu<input id="m_title" value="${esc(t?.title)}" placeholder="Co je potřeba udělat"${d}></label>
+    <label>Popis<textarea id="m_detail" rows="3" placeholder="Doplňující informace"${d}>${esc(t?.detail)}</textarea></label>
     <div class="row">
-      <label>Tým / sekce<select id="m_team">${teamOptions(t?.team_id, '— klubové, vidí všichni —')}</select></label>
-      <label>Odpovědná osoba<select id="m_ass"><option value="">— nikdo —</option>${S.profiles.filter(p => p.approved).map(p => `<option value="${p.id}" ${t?.assignee_id === p.id ? 'selected' : ''}>${esc(p.full_name || p.email)}</option>`).join('')}</select></label>
+      <label>Tým / sekce<select id="m_team"${d}>${teamOptions(t?.team_id, '— klubové, vidí všichni —')}</select></label>
+      <label>Odpovědná osoba<select id="m_ass"${d}><option value="">— nikdo —</option>${S.profiles.filter(p => p.approved).map(p => `<option value="${p.id}" ${t?.assignee_id === p.id ? 'selected' : ''}>${esc(p.full_name || p.email)}</option>`).join('')}</select></label>
     </div>
     <div class="row">
-      <label>Termín<input id="m_due" type="date" value="${t?.due_date || ''}"></label>
-      <label>Priorita<select id="m_prio">${Object.entries(PRIO).map(([k, v]) => `<option value="${k}" ${(t?.priority || 'normal') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-      <label>Opakování<select id="m_rec">${Object.entries(REC).map(([k, v]) => `<option value="${k}" ${(t?.recurrence || 'none') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label>Termín<input id="m_due" type="date" value="${t?.due_date || ''}"${d}></label>
+      <label>Priorita<select id="m_prio"${d}>${Object.entries(PRIO).map(([k, v]) => `<option value="${k}" ${(t?.priority || 'normal') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label>Opakování<select id="m_rec"${d}>${Object.entries(REC).map(([k, v]) => `<option value="${k}" ${(t?.recurrence || 'none') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
     </div>
     ${isNew ? '' : `
     <div class="cmts">
@@ -394,14 +451,15 @@ async function openTask(t) {
     </div>`}
   `, [
     !isNew && { label: t.status === 'done' ? 'Vrátit rozpracované' : 'Označit jako hotové', cls: 'ok', act: async () => { closeModal(); toggleTask(t) } },
-    !isNew && { label: 'Smazat', cls: 'danger', act: async () => { if (!confirm('Opravdu smazat tento úkol?')) return; await sb.from('bc_task').delete().eq('id', t.id); closeModal(); await loadAll(); render(); toast('Úkol smazán') } },
-    { label: 'Uložit', cls: 'primary', act: saveTask },
+    !isNew && !ro && { label: 'Smazat', cls: 'danger', act: async () => { if (!confirm('Opravdu smazat tento úkol?')) return; const { error } = await sb.from('bc_task').delete().eq('id', t.id); if (error) return toast(error.message, true); closeModal(); await loadAll(); render(); toast('Úkol smazán') } },
+    !ro && { label: 'Uložit', cls: 'primary', act: saveTask },
   ].filter(Boolean))
 
   if (!isNew) {
     $('#m_cadd').onclick = async () => {
       const body = $('#m_cmt').value.trim(); if (!body) return
-      await sb.from('bc_task_comment').insert({ task_id: t.id, author_id: S.me.id, body })
+      const { error } = await sb.from('bc_task_comment').insert({ task_id: t.id, author_id: S.me.id, body })
+      if (error) return toast(error.message, true)
       closeModal(); openTask(t)
     }
   }
@@ -688,5 +746,8 @@ async function boot() {
   if (!prof.approved) return renderPending()
   await loadAll()
   render()
+  // upozornění se doptáváme každou minutu, ať se objeví i bez obnovení stránky
+  setInterval(() => { if (!document.hidden) refreshNotes(true) }, 60000)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshNotes(true) })
 }
 boot()

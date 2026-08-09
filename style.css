@@ -227,3 +227,34 @@ label small.hint{display:block}
 @media(max-width:640px){.tmgrid{grid-template-columns:1fr}}
 .stats.st3{grid-template-columns:repeat(3,1fr)}
 @media(max-width:760px){.stats,.stats.st3{grid-template-columns:1fr 1fr}}
+
+/* ==== priorita v seznamu úkolů ==== */
+.pr{font-style:normal;font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;padding:1px 6px;border-radius:4px;margin-right:7px;vertical-align:1px}
+.pr.hi{background:var(--red);color:#fff}
+.pr.lo{background:#EDEDED;color:#8A8A8A}
+.trow.p-high{box-shadow:inset 3px 0 0 var(--red)}
+.trow.p-low b{color:#5A5A5A}
+.trow.done .pr{opacity:.45}
+
+/* ==== jen pro čtení ==== */
+.ronote{background:var(--tint);border-radius:8px;padding:10px 12px;font-size:12.5px;color:#7A4A4A;margin-bottom:14px;line-height:1.5}
+.mb input:disabled,.mb select:disabled,.mb textarea:disabled{background:#F7F7F7;color:#6B6B6B;cursor:not-allowed}
+
+/* ==== upozornění ==== */
+.bell{position:relative;color:#B4B4B4;cursor:pointer;padding:7px;border-radius:8px;display:flex}
+.bell:hover{color:#fff;background:#1D1D1D}
+.bell .dot{position:absolute;top:0;right:0;background:var(--red);color:#fff;font-style:normal;font-size:9.5px;font-weight:700;min-width:15px;height:15px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 3px;border:2px solid #0F0F0F}
+.npanel{position:fixed;top:58px;right:16px;width:370px;max-width:calc(100vw - 24px);background:#fff;border-radius:11px;box-shadow:0 18px 50px rgba(0,0,0,.22);z-index:60;overflow:hidden}
+.nph{display:flex;align-items:center;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line)}
+.nph b{font-size:13px;text-transform:uppercase;letter-spacing:.08em;flex:1}
+.lnk{background:none;border:0;color:var(--red);font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:underline}
+.nlist{max-height:min(440px,60vh);overflow:auto}
+.nrow{display:flex;gap:10px;align-items:flex-start;padding:11px 15px;border-bottom:1px solid #F4F4F4;cursor:pointer}
+.nrow:last-child{border-bottom:0}
+.nrow:hover{background:#FAFAFA}
+.nrow.new{background:#FFF8F8}
+.nrow.new:hover{background:#FFF1F1}
+.nb{flex:1;font-size:12.5px;line-height:1.55}
+.nb em{font-style:normal;font-weight:600}
+.nb .q{display:block;color:var(--grey);font-size:11.5px;margin-top:2px}
+.nt{font-size:10.5px;color:var(--grey);white-space:nowrap;padding-top:2px}

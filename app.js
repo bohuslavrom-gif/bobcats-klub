@@ -7,7 +7,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY)
 /* ============ stav ============ */
 const S = {
   user: null, me: null,
-  profiles: [], teams: [], tasks: [], events: [], lists: [], items: [], memberships: [], notes: [], docs: [],
+  profiles: [], teams: [], tasks: [], events: [], lists: [], items: [], memberships: [], notes: [], docs: [], people: [],
   view: 'dash',
   filter: { who: 'all', team: '', status: 'open', q: '' },
   docFilter: { team: '', q: '' },
@@ -38,7 +38,7 @@ function daysLeft(d) {
   return Math.round((new Date(d + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 86400000)
 }
 function teamName(id) { return S.teams.find(t => t.id === id)?.name || '' }
-function personName(id) { const p = S.profiles.find(p => p.id === id); return p ? (p.full_name || p.email) : '' }
+function personName(id) { const p = S.people.find(p => p.id === id) || S.profiles.find(p => p.id === id); return p ? (p.full_name || p.email) : '' }
 function toast(msg, bad) {
   const t = el('div', 'toast' + (bad ? ' bad' : ''), esc(msg))
   document.body.appendChild(t)
@@ -72,7 +72,7 @@ const fileIcon = n => {
 
 /* ============ data ============ */
 async function loadAll() {
-  const [pr, tm, tk, ev, cl, ci, ms, nt, dc] = await Promise.all([
+  const [pr, tm, tk, ev, cl, ci, ms, nt, dc, pe] = await Promise.all([
     sb.from('bc_profile').select('*').order('full_name'),
     sb.from('bc_team').select('*').order('sort'),
     sb.from('bc_task').select('*').order('due_date', { nullsFirst: false }),
@@ -82,8 +82,11 @@ async function loadAll() {
     sb.from('bc_membership').select('*'),
     sb.from('bc_notification').select('*').order('created_at', { ascending: false }).limit(40),
     sb.from('bc_document').select('*').order('created_at', { ascending: false }),
+    sb.rpc('bc_people'),
   ])
   S.docs = dc.data || []
+  // jména všech členů bez kontaktních údajů — kvůli popiskům u úkolů, poznámek a dokumentů
+  S.people = (pe.data || []).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'cs'))
   S.profiles = pr.data || []; S.teams = tm.data || []; S.tasks = tk.data || []
   S.events = ev.data || []; S.lists = cl.data || []; S.items = ci.data || []
   S.memberships = ms.data || []; S.notes = nt.data || []
@@ -212,7 +215,7 @@ function renderShell() {
   document.body.innerHTML = `
   <header class="top">
     <div class="brand"><img src="./logo-white.png"><div><b>Příbram Bobcats</b><span>Řízení klubu</span></div></div>
-    <nav class="nav">${NAV.filter(([k]) => k !== 'check' || S.seesAll).map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
+    <nav class="nav">${NAV.filter(([k]) => (k !== 'check' && k !== 'people') || S.seesAll).map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
     <div class="me">
       <div class="bell" id="bell" title="Upozornění">
         <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path fill="currentColor" d="M12 22a2.1 2.1 0 0 0 2.1-2.1H9.9A2.1 2.1 0 0 0 12 22Zm6.3-6.3v-5.2c0-3.2-1.7-5.9-4.7-6.6v-.7a1.6 1.6 0 0 0-3.2 0v.7c-3 .7-4.7 3.4-4.7 6.6v5.2L3.6 17.5v.9h16.8v-.9Z"/></svg>
@@ -278,7 +281,7 @@ function render() {
   if (S.view === 'cal') viewCal(m)
   if (S.view === 'docs') viewDocs(m)
   if (S.view === 'check') { if (S.seesAll) viewCheck(m); else { S.view = 'dash'; return render() } }
-  if (S.view === 'people') viewPeople(m)
+  if (S.view === 'people') { if (S.seesAll) viewPeople(m); else { S.view = 'dash'; return render() } }
 }
 
 /* ============ PŘEHLED ============ */
@@ -484,7 +487,7 @@ async function openTask(t) {
     <label>Popis<textarea id="m_detail" rows="3" placeholder="Doplňující informace"${d}>${esc(t?.detail)}</textarea></label>
     <div class="row">
       <label>Tým / sekce<select id="m_team"${d}>${teamOptions(t?.team_id, '— klubové, vidí všichni —')}</select></label>
-      <label>Odpovědná osoba<select id="m_ass"${d}><option value="">— nikdo —</option>${S.profiles.filter(p => p.approved).map(p => `<option value="${p.id}" ${t?.assignee_id === p.id ? 'selected' : ''}>${esc(p.full_name || p.email)}</option>`).join('')}</select></label>
+      <label>Odpovědná osoba<select id="m_ass"${d}><option value="">— nikdo —</option>${S.people.filter(p => p.approved).map(p => `<option value="${p.id}" ${t?.assignee_id === p.id ? 'selected' : ''}>${esc(p.full_name)}</option>`).join('')}</select></label>
     </div>
     <div class="row">
       <label>Termín<input id="m_due" type="date" value="${t?.due_date || ''}"${d}></label>

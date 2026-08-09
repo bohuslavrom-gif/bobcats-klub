@@ -103,6 +103,15 @@ async function loadAll() {
   S.isMkt = S.seesAll || S.myTeams.some(id => S.teams.find(t => t.id === id)?.name === 'Sekce marketing')
 }
 const teamsOf = id => S.memberships.filter(m => m.profile_id === id).map(m => m.team_id)
+// odpovědné osoby úkolu — může jich být víc
+const assignees = t => (t?.assignee_ids && t.assignee_ids.length ? t.assignee_ids : (t?.assignee_id ? [t.assignee_id] : []))
+const hasAssignee = (t, id) => assignees(t).includes(id)
+const assigneeLabel = t => {
+  const a = assignees(t)
+  if (!a.length) return ''
+  if (a.length <= 2) return a.map(personName).join(', ')
+  return `${personName(a[0])} a další ${a.length - 1}`
+}
 // týmy, se kterými má smysl pracovat: správci a výbor všechny, ostatní jen svoje
 const myTeams = () => S.seesAll ? S.teams : S.teams.filter(t => S.myTeams.includes(t.id))
 const teamOptions = (sel, extra) => `<option value="">${extra}</option>` +
@@ -298,7 +307,7 @@ function viewDash(m) {
   const open = S.tasks.filter(t => t.status !== 'done')
   const over = open.filter(t => t.due_date && t.due_date < today())
   const soon = open.filter(t => t.due_date && daysLeft(t.due_date) >= 0 && daysLeft(t.due_date) <= 7)
-  const mine = open.filter(t => t.assignee_id === S.me.id)
+  const mine = open.filter(t => hasAssignee(t, S.me.id))
   const given = open.filter(t => t.created_by === S.me.id)
   const givenLate = given.filter(t => t.due_date && t.due_date < today())
   const upcoming = S.events.filter(e => new Date(e.starts_at) >= new Date(today())).slice(0, 6)
@@ -346,7 +355,7 @@ function viewDash(m) {
   m.appendChild(grid)
 
   // co jsem zadal a čeká to na ostatní
-  const waiting = given.filter(t => t.assignee_id !== S.me.id)
+  const waiting = given.filter(t => !hasAssignee(t, S.me.id))
     .sort((a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999'))
   const gs = el('section', 'card')
   gs.appendChild(el('div', 'card-h', `<h3>Zadal jsem — čeká na ostatní</h3>${givenLate.length ? `<span class="pill">${givenLate.length} po termínu</span>` : ''}`))
@@ -405,7 +414,7 @@ function taskRow(t, compact) {
     <button class="chk" title="Označit jako hotové">${t.status === 'done' ? '✓' : ''}</button>
     <div class="tb">
       <b>${prioTag(t.priority)}${esc(t.title)}</b>
-      <span>${t.team_id ? esc(teamName(t.team_id)) : 'Bez týmu'}${t.assignee_id ? ' · ' + esc(personName(t.assignee_id)) : ''}${t.recurrence !== 'none' ? ' · ' + REC[t.recurrence].toLowerCase() : ''}</span>
+      <span>${t.team_id ? esc(teamName(t.team_id)) : 'Bez týmu'}${assignees(t).length ? ' · ' + esc(assigneeLabel(t)) : ''}${t.recurrence !== 'none' ? ' · ' + REC[t.recurrence].toLowerCase() : ''}</span>
     </div>
     <div class="td ${late ? 'l' : ''}">${t.due_date ? fmtDate(t.due_date) : '—'}${!compact || !t.due_date ? '' : `<em>${late ? `${-dl} dní po` : dl === 0 ? 'dnes' : `za ${dl} dní`}</em>`}</div>`
   r.querySelector('.chk').onclick = e => { e.stopPropagation(); toggleTask(t) }
@@ -427,7 +436,7 @@ async function toggleTask(t) {
     if (t.recurrence === 'quarterly') d.setMonth(d.getMonth() + 3)
     if (t.recurrence === 'yearly') d.setFullYear(d.getFullYear() + 1)
     await sb.from('bc_task').insert({
-      title: t.title, detail: t.detail, team_id: t.team_id, assignee_id: t.assignee_id,
+      title: t.title, detail: t.detail, team_id: t.team_id, assignee_ids: assignees(t),
       due_date: iso(d), priority: t.priority, recurrence: t.recurrence, created_by: S.me.id,
     })
     toast('Hotovo — vytvořen další opakovaný úkol na ' + fmtDate(iso(d)))
@@ -467,9 +476,9 @@ function filteredTasks() {
   if (F.status === 'open') a = a.filter(t => t.status !== 'done')
   if (F.status === 'done') a = a.filter(t => t.status === 'done')
   if (F.status === 'late') a = a.filter(t => t.status !== 'done' && t.due_date && t.due_date < today())
-  if (F.who === 'mine') a = a.filter(t => t.assignee_id === S.me.id)
+  if (F.who === 'mine') a = a.filter(t => hasAssignee(t, S.me.id))
   if (F.who === 'created') a = a.filter(t => t.created_by === S.me.id)
-  if (F.who === 'unassigned') a = a.filter(t => !t.assignee_id)
+  if (F.who === 'unassigned') a = a.filter(t => !assignees(t).length)
   if (F.team) a = a.filter(t => t.team_id === F.team)
   if (F.q) { const q = F.q.toLowerCase(); a = a.filter(t => (t.title + ' ' + (t.detail || '')).toLowerCase().includes(q)) }
   return a.sort((x, y) => (x.due_date || '9999').localeCompare(y.due_date || '9999'))
@@ -494,10 +503,15 @@ async function openTask(t) {
     ${isNew ? '' : `<p class="stnote">${t.status === 'done' ? 'Úkol je splněný.' : 'Úkol je otevřený.'} Stav se přepíná čtverečkem u úkolu v seznamu.</p>`}
     <label>Název úkolu<input id="m_title" value="${esc(t?.title)}" placeholder="Co je potřeba udělat"${d}></label>
     <label>Popis<textarea id="m_detail" rows="3" placeholder="Doplňující informace"${d}>${esc(t?.detail)}</textarea></label>
-    <div class="row">
-      <label>Tým / sekce<select id="m_team"${d}>${teamOptions(t?.team_id, '— klubové, vidí všichni —')}</select></label>
-      <label>Odpovědná osoba<select id="m_ass"${d}><option value="">— nikdo —</option>${S.people.filter(p => p.approved).map(p => `<option value="${p.id}" ${t?.assignee_id === p.id ? 'selected' : ''}>${esc(p.full_name)}</option>`).join('')}</select></label>
-    </div>
+    <label>Tým / sekce<select id="m_team"${d}>${teamOptions(t?.team_id, '— klubové, vidí všichni —')}</select></label>
+    <label>Odpovědné osoby
+      <div class="asswrap">
+        <input id="m_assq" class="assq" placeholder="Hledat jméno…"${d}>
+        <div class="assgrid" id="m_assgrid">${S.people.filter(p => p.approved).map(p =>
+          `<label class="chkline asso" data-n="${esc((p.full_name || '').toLowerCase())}"><input type="checkbox" class="assx" value="${p.id}" ${assignees(t).includes(p.id) ? 'checked' : ''}${d}> ${esc(p.full_name)}</label>`).join('')}</div>
+      </div>
+      <small class="hint">Zaškrtni všechny, kdo úkol dostanou. Upozornění přijde každému z nich a úkol se jim objeví mezi „Moje“.</small>
+    </label>
     <div class="row">
       <label>Termín<input id="m_due" type="date" value="${t?.due_date || ''}"${d}></label>
       <label>Priorita<select id="m_prio"${d}>${Object.entries(PRIO).map(([k, v]) => `<option value="${k}" ${(t?.priority || 'normal') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
@@ -522,12 +536,20 @@ async function openTask(t) {
       closeModal(); openTask(t)
     }
   }
+  // hledání ve jménech + zaškrtnutí se drží nahoře
+  const q = $('#m_assq')
+  if (q) q.oninput = () => {
+    const v = q.value.trim().toLowerCase()
+    document.querySelectorAll('.asso').forEach(l => {
+      l.style.display = !v || l.dataset.n.includes(v) || l.querySelector('input').checked ? '' : 'none'
+    })
+  }
   async function saveTask() {
     const payload = {
       title: $('#m_title').value.trim(),
       detail: $('#m_detail').value.trim(),
       team_id: $('#m_team').value || null,
-      assignee_id: $('#m_ass').value || null,
+      assignee_ids: [...document.querySelectorAll('.assx')].filter(x => x.checked).map(x => x.value),
       due_date: $('#m_due').value || null,
       priority: $('#m_prio').value,
       recurrence: $('#m_rec').value,
@@ -1060,8 +1082,8 @@ function viewPeople(m) {
   const sec = el('section', 'card')
   sec.appendChild(el('div', 'card-h', '<h3>Členové systému</h3>'))
   S.profiles.filter(p => p.approved).forEach(p => {
-    const open = S.tasks.filter(t => t.assignee_id === p.id && t.status !== 'done').length
-    const late = S.tasks.filter(t => t.assignee_id === p.id && t.status !== 'done' && t.due_date && t.due_date < today()).length
+    const open = S.tasks.filter(t => hasAssignee(t, p.id) && t.status !== 'done').length
+    const late = S.tasks.filter(t => hasAssignee(t, p.id) && t.status !== 'done' && t.due_date && t.due_date < today()).length
     const mine = teamsOf(p.id)
     const board = mine.some(id => S.teams.find(t => t.id === id)?.kind === 'vybor')
     const r = el('div', 'prow2')

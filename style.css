@@ -326,3 +326,12 @@ label small.hint{display:block}
 .chkline.inline .ch{margin-right:1px}
 .rub .ch{width:15px;height:15px;border-radius:4px}
 .rub .ch svg{width:9.5px;height:9.5px}
+
+/* ==== výběr více odpovědných osob ==== */
+.asswrap{border:1px solid var(--line);border-radius:8px;margin-top:5px;overflow:hidden}
+.assq{width:100%;border:0;border-bottom:1px solid var(--line);padding:8px 11px;background:#FAFAFA;border-radius:0}
+.assq:focus{outline:none;background:#fff;border-bottom-color:var(--red)}
+.assgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px;max-height:172px;overflow:auto;padding:7px 11px}
+.assgrid .chkline{display:flex;align-items:center;gap:7px;font-size:13px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink);padding:3px 0;margin:0;cursor:pointer}
+.assgrid .chkline:hover{color:var(--red)}
+@media(max-width:640px){.assgrid{grid-template-columns:1fr}}

@@ -7,10 +7,11 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY)
 /* ============ stav ============ */
 const S = {
   user: null, me: null,
-  profiles: [], teams: [], tasks: [], events: [], lists: [], items: [], memberships: [], notes: [], docs: [], people: [],
+  profiles: [], teams: [], tasks: [], events: [], lists: [], items: [], memberships: [], notes: [], docs: [], people: [], rubrics: [], posts: [],
   view: 'dash',
   filter: { who: 'all', team: '', status: 'open', q: '' },
   docFilter: { team: '', q: '' },
+  mktFilter: { status: 'plan', rubric: '' },
   cal: new Date(),
 }
 
@@ -58,6 +59,9 @@ const DOC_CATS = {
   smlouva: 'Smlouvy a dotace',
   ostatni: 'Ostatní',
 }
+const CHANNELS = { ig: 'Instagram', fb: 'Facebook', tt: 'TikTok', yt: 'YouTube', web: 'Web' }
+const POST_STATUS = { napad: 'Nápad', psani: 'Připravuje se', schvaleni: 'Ke schválení', naplanovano: 'Naplánováno', zverejneno: 'Zveřejněno' }
+const CADENCE = { tydne: 'Každý týden', dvakrat: '2× měsíčně', mesicne: 'Každý měsíc', sezonne: 'Sezónně / nárazově' }
 const fmtSize = b => !b ? '' : b < 1024 * 1024 ? Math.max(1, Math.round(b / 1024)) + ' kB' : (b / 1048576).toFixed(1).replace('.', ',') + ' MB'
 const fileIcon = n => {
   const e = (n || '').split('.').pop().toLowerCase()
@@ -72,7 +76,7 @@ const fileIcon = n => {
 
 /* ============ data ============ */
 async function loadAll() {
-  const [pr, tm, tk, ev, cl, ci, ms, nt, dc, pe] = await Promise.all([
+  const [pr, tm, tk, ev, cl, ci, ms, nt, dc, pe, ru, po] = await Promise.all([
     sb.from('bc_profile').select('*').order('full_name'),
     sb.from('bc_team').select('*').order('sort'),
     sb.from('bc_task').select('*').order('due_date', { nullsFirst: false }),
@@ -83,7 +87,10 @@ async function loadAll() {
     sb.from('bc_notification').select('*').order('created_at', { ascending: false }).limit(40),
     sb.from('bc_document').select('*').order('created_at', { ascending: false }),
     sb.rpc('bc_people'),
+    sb.from('bc_post_rubric').select('*').order('sort'),
+    sb.from('bc_post').select('*').order('publish_on', { nullsFirst: false }),
   ])
+  S.rubrics = ru.data || []; S.posts = po.data || []
   S.docs = dc.data || []
   // jména všech členů bez kontaktních údajů — kvůli popiskům u úkolů, poznámek a dokumentů
   S.people = (pe.data || []).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'cs'))
@@ -93,6 +100,7 @@ async function loadAll() {
   S.me = S.profiles.find(p => p.id === S.user.id) || S.me
   S.seesAll = !!S.me.is_admin || S.memberships.some(m => m.profile_id === S.me.id && S.teams.find(t => t.id === m.team_id)?.kind === 'vybor')
   S.myTeams = S.memberships.filter(m => m.profile_id === S.me.id).map(m => m.team_id)
+  S.isMkt = S.seesAll || S.myTeams.some(id => S.teams.find(t => t.id === id)?.name === 'Sekce marketing')
 }
 const teamsOf = id => S.memberships.filter(m => m.profile_id === id).map(m => m.team_id)
 // týmy, se kterými má smysl pracovat: správci a výbor všechny, ostatní jen svoje
@@ -208,14 +216,14 @@ function renderPending() {
 
 /* ============ layout ============ */
 const NAV = [
-  ['dash', 'Přehled'], ['tasks', 'Úkoly'], ['cal', 'Kalendář'], ['docs', 'Dokumenty'], ['check', 'Checklisty'], ['people', 'Lidé a týmy'],
+  ['dash', 'Přehled'], ['tasks', 'Úkoly'], ['cal', 'Kalendář'], ['docs', 'Dokumenty'], ['mkt', 'Marketing'], ['check', 'Checklisty'], ['people', 'Lidé a týmy'],
 ]
 function renderShell() {
   document.body.className = ''
   document.body.innerHTML = `
   <header class="top">
     <div class="brand"><img src="./logo-white.png"><div><b>Příbram Bobcats</b><span>Řízení klubu</span></div></div>
-    <nav class="nav">${NAV.filter(([k]) => (k !== 'check' && k !== 'people') || S.seesAll).map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
+    <nav class="nav">${NAV.filter(([k]) => k === 'mkt' ? S.isMkt : ((k !== 'check' && k !== 'people') || S.seesAll)).map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
     <div class="me">
       <div class="bell" id="bell" title="Upozornění">
         <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path fill="currentColor" d="M12 22a2.1 2.1 0 0 0 2.1-2.1H9.9A2.1 2.1 0 0 0 12 22Zm6.3-6.3v-5.2c0-3.2-1.7-5.9-4.7-6.6v-.7a1.6 1.6 0 0 0-3.2 0v.7c-3 .7-4.7 3.4-4.7 6.6v5.2L3.6 17.5v.9h16.8v-.9Z"/></svg>
@@ -280,6 +288,7 @@ function render() {
   if (S.view === 'tasks') viewTasks(m)
   if (S.view === 'cal') viewCal(m)
   if (S.view === 'docs') viewDocs(m)
+  if (S.view === 'mkt') { if (S.isMkt) viewMkt(m); else { S.view = 'dash'; return render() } }
   if (S.view === 'check') { if (S.seesAll) viewCheck(m); else { S.view = 'dash'; return render() } }
   if (S.view === 'people') { if (S.seesAll) viewPeople(m); else { S.view = 'dash'; return render() } }
 }
@@ -530,6 +539,170 @@ async function openTask(t) {
     if (r.error) return toast(r.error.message, true)
     closeModal(); await loadAll(); render(); toast(isNew ? 'Úkol vytvořen' : 'Úkol uložen')
   }
+}
+
+/* ============ MARKETING ============ */
+const chanTags = a => (a || []).map(c => `<i class="ch c-${c}">${CHANNELS[c] || c}</i>`).join('')
+const chanBoxes = (id, sel) => Object.entries(CHANNELS).map(([k, v]) =>
+  `<label class="chkline inline"><input type="checkbox" class="${id}" value="${k}" ${(sel || []).includes(k) ? 'checked' : ''}> ${v}</label>`).join('')
+const picked = cls => [...document.querySelectorAll('.' + cls)].filter(x => x.checked).map(x => x.value)
+
+function viewMkt(m) {
+  const h = el('div', 'head')
+  h.innerHTML = '<h2>Marketing</h2><p>Stálé rubriky a plán příspěvků na sociální sítě.</p>'
+  const ar = el('button', 'btn ghost', '+ Rubrika'); ar.onclick = () => openRubric(null)
+  const ap = el('button', 'btn primary', '+ Příspěvek'); ap.onclick = () => openPost(null)
+  h.append(ar, ap); m.appendChild(h)
+
+  // ---- rubriky ----
+  const rs = el('section', 'card')
+  rs.appendChild(el('div', 'card-h', '<h3>Rubriky — co pravidelně vydáváme</h3>'))
+  if (!S.rubrics.length) rs.appendChild(el('div', 'empty', 'Zatím žádné rubriky. Rubrika je stálý typ obsahu, třeba „Sestřih ze zápasu" nebo „Představení hráče" — určíš u ní sítě, jak často vychází a kdo ji má na starost.'))
+  const rg = el('div', 'rubs')
+  S.rubrics.forEach(r => {
+    const cnt = S.posts.filter(p => p.rubric_id === r.id).length
+    const c = el('div', 'rub')
+    c.innerHTML = `<b>${esc(r.title)}</b>
+      <span class="rc">${chanTags(r.channels)}</span>
+      <span class="rm">${r.cadence ? esc(CADENCE[r.cadence] || r.cadence) : 'bez pevné frekvence'}${r.owner_id ? ' · ' + esc(personName(r.owner_id)) : ''} · ${cnt} příspěvků</span>
+      ${r.description ? `<span class="rd">${esc(r.description)}</span>` : ''}`
+    c.onclick = () => openRubric(r)
+    rg.appendChild(c)
+  })
+  if (S.rubrics.length) rs.appendChild(rg)
+  m.appendChild(rs)
+
+  // ---- plán ----
+  const f = el('div', 'filters')
+  f.innerHTML = `
+    <div class="seg" id="ps">
+      ${[['plan', 'V plánu'], ['all', 'Vše'], ...Object.entries(POST_STATUS)].map(([k, l]) => `<button data-k="${k}" class="${(S.mktFilter.status || 'plan') === k ? 'on' : ''}">${l}</button>`).join('')}
+    </div>
+    <select id="pr"><option value="">Všechny rubriky</option>${S.rubrics.map(r => `<option value="${r.id}" ${S.mktFilter.rubric === r.id ? 'selected' : ''}>${esc(r.title)}</option>`).join('')}</select>`
+  m.appendChild(f)
+  f.querySelectorAll('#ps button').forEach(b => b.onclick = () => { S.mktFilter.status = b.dataset.k; render() })
+  $('#pr', f).onchange = e => { S.mktFilter.rubric = e.target.value; render() }
+
+  let a = [...S.posts]
+  const st = S.mktFilter.status || 'plan'
+  if (st === 'plan') a = a.filter(p => p.status !== 'zverejneno')
+  else if (st !== 'all') a = a.filter(p => p.status === st)
+  if (S.mktFilter.rubric) a = a.filter(p => p.rubric_id === S.mktFilter.rubric)
+  a.sort((x, y) => (x.publish_on || '9999').localeCompare(y.publish_on || '9999'))
+
+  const sec = el('section', 'card')
+  sec.appendChild(el('div', 'card-h', `<h3>Plán příspěvků</h3><span class="pill">${a.length}</span>`))
+  if (!a.length) sec.appendChild(el('div', 'empty', S.posts.length ? 'Žádný příspěvek neodpovídá filtru.' : 'Zatím tu nic není. Přidej první příspěvek tlačítkem nahoře.'))
+
+  let lastMonth = null
+  a.forEach(p => {
+    const key = p.publish_on ? p.publish_on.slice(0, 7) : 'bez'
+    if (key !== lastMonth) {
+      lastMonth = key
+      const lbl = p.publish_on
+        ? `${MONTHS[+p.publish_on.slice(5, 7) - 1]} ${p.publish_on.slice(0, 4)}`
+        : 'Bez data'
+      sec.appendChild(el('div', 'mhead', esc(lbl)))
+    }
+    sec.appendChild(postRow(p))
+  })
+  m.appendChild(sec)
+}
+function postRow(p) {
+  const late = p.publish_on && p.publish_on < today() && p.status !== 'zverejneno'
+  const r = el('div', 'porow' + (late ? ' late' : ''))
+  const d = p.publish_on ? new Date(p.publish_on + 'T00:00:00') : null
+  r.innerHTML = `
+    <div class="pod">${d ? `<b>${d.getDate()}.</b><span>${DAYS[(d.getDay() + 6) % 7]}</span>` : '<b>—</b>'}</div>
+    <div class="pob">
+      <b>${esc(p.title)}</b>
+      <span>${chanTags(p.channels)}${p.rubric_id ? `<i class="tm">${esc(S.rubrics.find(x => x.id === p.rubric_id)?.title || '')}</i>` : ''}${p.owner_id ? ' ' + esc(personName(p.owner_id)) : ''}${p.publish_time ? ' · ' + p.publish_time.slice(0, 5) : ''}</span>
+      ${p.body ? `<span class="pox">${esc(p.body.slice(0, 120))}${p.body.length > 120 ? '…' : ''}</span>` : ''}
+    </div>
+    <div class="post-st s-${p.status}">${POST_STATUS[p.status] || p.status}</div>`
+  r.onclick = () => openPost(p)
+  return r
+}
+function openRubric(r) {
+  const isNew = !r
+  modal(isNew ? 'Nová rubrika' : 'Rubrika', `
+    <label>Název rubriky<input id="r_t" value="${esc(r?.title)}" placeholder="Např. Sestřih ze zápasu"></label>
+    <label>K čemu je<textarea id="r_d" rows="2" placeholder="Co se v rubrice vydává a proč">${esc(r?.description)}</textarea></label>
+    <label>Sítě<div class="chks">${chanBoxes('rch', r?.channels)}</div></label>
+    <div class="row">
+      <label>Jak často<select id="r_c"><option value="">— neurčeno —</option>${Object.entries(CADENCE).map(([k, v]) => `<option value="${k}" ${r?.cadence === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label>Kdo má na starost<select id="r_o"><option value="">— nikdo —</option>${S.people.filter(p => p.approved).map(p => `<option value="${p.id}" ${r?.owner_id === p.id ? 'selected' : ''}>${esc(p.full_name)}</option>`).join('')}</select></label>
+    </div>
+  `, [
+    !isNew && {
+      label: 'Smazat', cls: 'danger', act: async () => {
+        if (!confirm('Smazat rubriku? Příspěvky zůstanou, jen ztratí zařazení.')) return
+        const { error } = await sb.from('bc_post_rubric').delete().eq('id', r.id)
+        if (error) return toast(error.message, true)
+        closeModal(); await loadAll(); render(); toast('Rubrika smazána')
+      }
+    },
+    {
+      label: 'Uložit', cls: 'primary', act: async () => {
+        const up = {
+          title: $('#r_t').value.trim(), description: $('#r_d').value.trim() || null,
+          channels: picked('rch'), cadence: $('#r_c').value || null, owner_id: $('#r_o').value || null,
+        }
+        if (!up.title) return toast('Vyplň název rubriky', true)
+        const q = isNew ? await sb.from('bc_post_rubric').insert({ ...up, sort: 100 + S.rubrics.length })
+          : await sb.from('bc_post_rubric').update(up).eq('id', r.id)
+        if (q.error) return toast(q.error.message, true)
+        closeModal(); await loadAll(); render(); toast('Uloženo')
+      }
+    },
+  ].filter(Boolean))
+}
+function openPost(p) {
+  const isNew = !p
+  modal(isNew ? 'Nový příspěvek' : 'Příspěvek', `
+    <label>Název / téma<input id="p_t" value="${esc(p?.title)}" placeholder="Např. Sestřih ze zápasu s Ostravou"></label>
+    <div class="row">
+      <label>Rubrika<select id="p_r"><option value="">— bez rubriky —</option>${S.rubrics.map(r => `<option value="${r.id}" ${p?.rubric_id === r.id ? 'selected' : ''}>${esc(r.title)}</option>`).join('')}</select></label>
+      <label>Stav<select id="p_s">${Object.entries(POST_STATUS).map(([k, v]) => `<option value="${k}" ${(p?.status || 'napad') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+    </div>
+    <label>Sítě<div class="chks">${chanBoxes('pch', p?.channels)}</div></label>
+    <div class="row">
+      <label>Datum vydání<input id="p_d" type="date" value="${p?.publish_on || ''}"></label>
+      <label>Čas<input id="p_h" type="time" value="${p?.publish_time ? p.publish_time.slice(0, 5) : ''}"></label>
+      <label>Kdo připraví<select id="p_o"><option value="">— nikdo —</option>${S.people.filter(x => x.approved).map(x => `<option value="${x.id}" ${p?.owner_id === x.id ? 'selected' : ''}>${esc(x.full_name)}</option>`).join('')}</select></label>
+    </div>
+    <label>Text příspěvku<textarea id="p_b" rows="4" placeholder="Návrh textu, hashtagy, popisek…">${esc(p?.body)}</textarea></label>
+    <label>Odkaz na fotky nebo video<input id="p_a" value="${esc(p?.asset_url)}" placeholder="Odkaz na Disk, Dropbox…"></label>
+    <label>Poznámka<textarea id="p_n" rows="2" placeholder="Co ještě chybí, na co si dát pozor">${esc(p?.note)}</textarea></label>
+  `, [
+    !isNew && {
+      label: 'Smazat', cls: 'danger', act: async () => {
+        if (!confirm('Opravdu smazat tento příspěvek?')) return
+        const { error } = await sb.from('bc_post').delete().eq('id', p.id)
+        if (error) return toast(error.message, true)
+        closeModal(); await loadAll(); render(); toast('Příspěvek smazán')
+      }
+    },
+    {
+      label: 'Uložit', cls: 'primary', act: async () => {
+        let url = $('#p_a').value.trim()
+        if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url
+        const up = {
+          title: $('#p_t').value.trim(), body: $('#p_b').value.trim() || null,
+          rubric_id: $('#p_r').value || null, status: $('#p_s').value,
+          channels: picked('pch'),
+          publish_on: $('#p_d').value || null, publish_time: $('#p_h').value || null,
+          owner_id: $('#p_o').value || null, asset_url: url || null,
+          note: $('#p_n').value.trim() || null,
+        }
+        if (!up.title) return toast('Vyplň název příspěvku', true)
+        const q = isNew ? await sb.from('bc_post').insert({ ...up, created_by: S.me.id })
+          : await sb.from('bc_post').update(up).eq('id', p.id)
+        if (q.error) return toast(q.error.message, true)
+        closeModal(); await loadAll(); render(); toast('Uloženo')
+      }
+    },
+  ].filter(Boolean))
 }
 
 /* ============ DOKUMENTY ============ */

@@ -542,9 +542,27 @@ async function openTask(t) {
 }
 
 /* ============ MARKETING ============ */
-const chanTags = a => (a || []).map(c => `<i class="ch c-${c}">${CHANNELS[c] || c}</i>`).join('')
+const CHAN_ICON = {
+  fb: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M13.5 21.9v-8.4h2.8l.42-3.26H13.5V8.16c0-.94.26-1.58 1.61-1.58h1.72V3.66c-.3-.04-1.32-.13-2.51-.13-2.49 0-4.19 1.52-4.19 4.3v2.4H7.32v3.27h2.81v8.4h3.37z"/></svg>',
+  ig: '<svg viewBox="0 0 24 24"><rect x="3.2" y="3.2" width="17.6" height="17.6" rx="5" fill="none" stroke="currentColor" stroke-width="2.1"/><circle cx="12" cy="12" r="4.1" fill="none" stroke="currentColor" stroke-width="2.1"/><circle cx="17.4" cy="6.6" r="1.35" fill="currentColor"/></svg>',
+  tt: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M16.6 5.82A4.28 4.28 0 0 1 15.54 3h-3.09v12.4a2.59 2.59 0 1 1-2.59-2.56c.26 0 .52.04.77.11V9.7a5.67 5.67 0 0 0-.77-.05 5.66 5.66 0 1 0 5.66 5.65V9.01a7.35 7.35 0 0 0 4.3 1.38V7.3a4.29 4.29 0 0 1-3.22-1.48z"/></svg>',
+  yt: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M21.6 7.2s-.2-1.4-.8-2c-.75-.8-1.6-.8-2-.85C16 4.2 12 4.2 12 4.2s-4 0-6.8.15c-.4.05-1.25.05-2 .85-.6.6-.8 2-.8 2S2.2 8.85 2.2 10.5v1.54c0 1.65.2 3.3.2 3.3s.2 1.4.8 2c.75.8 1.74.78 2.2.86 1.6.15 6.8.2 6.8.2s4 0 6.8-.21c.4-.05 1.25-.05 2-.85.6-.6.8-2 .8-2s.2-1.65.2-3.3V10.5c0-1.65-.2-3.3-.2-3.3zM9.9 14.2V8.9l5.15 2.66-5.15 2.64z"/></svg>',
+  web: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.9" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" d="M3.1 12h17.8M12 3.1c2.3 2.4 3.5 5.5 3.5 8.9s-1.2 6.5-3.5 8.9c-2.3-2.4-3.5-5.5-3.5-8.9s1.2-6.5 3.5-8.9z"/></svg>',
+}
+const chanTags = a => (a || []).map(c =>
+  `<i class="ch c-${c}" title="${CHANNELS[c] || c}" aria-label="${CHANNELS[c] || c}">${CHAN_ICON[c] || ''}</i>`).join('')
 const chanBoxes = (id, sel) => Object.entries(CHANNELS).map(([k, v]) =>
-  `<label class="chkline inline"><input type="checkbox" class="${id}" value="${k}" ${(sel || []).includes(k) ? 'checked' : ''}> ${v}</label>`).join('')
+  `<label class="chkline inline"><input type="checkbox" class="${id}" value="${k}" ${(sel || []).includes(k) ? 'checked' : ''}> <i class="ch c-${k}">${CHAN_ICON[k] || ''}</i> ${v}</label>`).join('')
+
+// každá rubrika dostane vlastní barvu, ať se v plánu poznají na první pohled
+const RUB_COLORS = ['#C00000', '#1B5FA8', '#1B7F3B', '#6A3FA0', '#C2660A', '#0F7C7C', '#A81B63', '#4A5568']
+const rubColor = id => RUB_COLORS[Math.max(0, S.rubrics.findIndex(r => r.id === id)) % RUB_COLORS.length]
+const rubChip = id => {
+  const r = S.rubrics.find(x => x.id === id)
+  if (!r) return ''
+  const c = rubColor(id)
+  return `<i class="rchip" style="color:${c};border-color:${c}33;background:${c}12">${esc(r.title)}</i>`
+}
 const picked = cls => [...document.querySelectorAll('.' + cls)].filter(x => x.checked).map(x => x.value)
 
 function viewMkt(m) {
@@ -562,6 +580,7 @@ function viewMkt(m) {
   S.rubrics.forEach(r => {
     const cnt = S.posts.filter(p => p.rubric_id === r.id).length
     const c = el('div', 'rub')
+    c.style.setProperty('--rc', rubColor(r.id))
     c.innerHTML = `<b>${esc(r.title)}</b>
       <span class="rc">${chanTags(r.channels)}</span>
       <span class="rm">${r.cadence ? esc(CADENCE[r.cadence] || r.cadence) : 'bez pevné frekvence'}${r.owner_id ? ' · ' + esc(personName(r.owner_id)) : ''} · ${cnt} příspěvků</span>
@@ -616,7 +635,7 @@ function postRow(p) {
     <div class="pod">${d ? `<b>${d.getDate()}.</b><span>${DAYS[(d.getDay() + 6) % 7]}</span>` : '<b>—</b>'}</div>
     <div class="pob">
       <b>${esc(p.title)}</b>
-      <span>${chanTags(p.channels)}${p.rubric_id ? `<i class="tm">${esc(S.rubrics.find(x => x.id === p.rubric_id)?.title || '')}</i>` : ''}${p.owner_id ? ' ' + esc(personName(p.owner_id)) : ''}${p.publish_time ? ' · ' + p.publish_time.slice(0, 5) : ''}</span>
+      <span>${chanTags(p.channels)}${rubChip(p.rubric_id)}${p.owner_id ? ' ' + esc(personName(p.owner_id)) : ''}${p.publish_time ? ' · ' + p.publish_time.slice(0, 5) : ''}</span>
       ${p.body ? `<span class="pox">${esc(p.body.slice(0, 120))}${p.body.length > 120 ? '…' : ''}</span>` : ''}
     </div>
     <button class="post-st go s-${p.status}" title="Klepnutím změníš stav">${POST_STATUS[p.status] || p.status}</button>`

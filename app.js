@@ -7,9 +7,10 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY)
 /* ============ stav ============ */
 const S = {
   user: null, me: null,
-  profiles: [], teams: [], tasks: [], events: [], lists: [], items: [], memberships: [], notes: [],
+  profiles: [], teams: [], tasks: [], events: [], lists: [], items: [], memberships: [], notes: [], docs: [],
   view: 'dash',
   filter: { who: 'all', team: '', status: 'open', q: '' },
+  docFilter: { team: '', q: '' },
   cal: new Date(),
 }
 
@@ -49,10 +50,29 @@ const EVENT_KINDS = { training: 'Trénink', match: 'Zápas', meeting: 'Schůze',
 const REC = { none: 'Neopakovat', weekly: 'Každý týden', monthly: 'Každý měsíc', quarterly: 'Každé čtvrtletí', yearly: 'Každý rok' }
 const PRIO = { high: 'Vysoká', normal: 'Běžná', low: 'Nízká' }
 const CHK = { done: 'Máme', partial: 'Částečně', missing: 'Chybí' }
+const DOC_CATS = {
+  smernice: 'Směrnice a řády',
+  propozice: 'Propozice a rozpisy soutěží',
+  formular: 'Formuláře a přihlášky',
+  zapis: 'Zápisy a usnesení',
+  smlouva: 'Smlouvy a dotace',
+  ostatni: 'Ostatní',
+}
+const fmtSize = b => !b ? '' : b < 1024 * 1024 ? Math.max(1, Math.round(b / 1024)) + ' kB' : (b / 1048576).toFixed(1).replace('.', ',') + ' MB'
+const fileIcon = n => {
+  const e = (n || '').split('.').pop().toLowerCase()
+  if (['pdf'].includes(e)) return 'PDF'
+  if (['doc', 'docx', 'odt', 'rtf'].includes(e)) return 'DOC'
+  if (['xls', 'xlsx', 'ods', 'csv'].includes(e)) return 'XLS'
+  if (['ppt', 'pptx'].includes(e)) return 'PPT'
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'heic'].includes(e)) return 'IMG'
+  if (['zip', 'rar', '7z'].includes(e)) return 'ZIP'
+  return e.slice(0, 3).toUpperCase() || 'SOU'
+}
 
 /* ============ data ============ */
 async function loadAll() {
-  const [pr, tm, tk, ev, cl, ci, ms, nt] = await Promise.all([
+  const [pr, tm, tk, ev, cl, ci, ms, nt, dc] = await Promise.all([
     sb.from('bc_profile').select('*').order('full_name'),
     sb.from('bc_team').select('*').order('sort'),
     sb.from('bc_task').select('*').order('due_date', { nullsFirst: false }),
@@ -61,7 +81,9 @@ async function loadAll() {
     sb.from('bc_checklist_item').select('*').order('sort'),
     sb.from('bc_membership').select('*'),
     sb.from('bc_notification').select('*').order('created_at', { ascending: false }).limit(40),
+    sb.from('bc_document').select('*').order('created_at', { ascending: false }),
   ])
+  S.docs = dc.data || []
   S.profiles = pr.data || []; S.teams = tm.data || []; S.tasks = tk.data || []
   S.events = ev.data || []; S.lists = cl.data || []; S.items = ci.data || []
   S.memberships = ms.data || []; S.notes = nt.data || []
@@ -183,7 +205,7 @@ function renderPending() {
 
 /* ============ layout ============ */
 const NAV = [
-  ['dash', 'Přehled'], ['tasks', 'Úkoly'], ['cal', 'Kalendář'], ['check', 'Checklisty'], ['people', 'Lidé a týmy'],
+  ['dash', 'Přehled'], ['tasks', 'Úkoly'], ['cal', 'Kalendář'], ['docs', 'Dokumenty'], ['check', 'Checklisty'], ['people', 'Lidé a týmy'],
 ]
 function renderShell() {
   document.body.className = ''
@@ -254,6 +276,7 @@ function render() {
   if (S.view === 'dash') viewDash(m)
   if (S.view === 'tasks') viewTasks(m)
   if (S.view === 'cal') viewCal(m)
+  if (S.view === 'docs') viewDocs(m)
   if (S.view === 'check') { if (S.seesAll) viewCheck(m); else { S.view = 'dash'; return render() } }
   if (S.view === 'people') viewPeople(m)
 }
@@ -503,6 +526,148 @@ async function openTask(t) {
       : await sb.from('bc_task').update(payload).eq('id', t.id)
     if (r.error) return toast(r.error.message, true)
     closeModal(); await loadAll(); render(); toast(isNew ? 'Úkol vytvořen' : 'Úkol uložen')
+  }
+}
+
+/* ============ DOKUMENTY ============ */
+function viewDocs(m) {
+  const h = el('div', 'head')
+  h.innerHTML = '<h2>Dokumenty</h2><p>Směrnice, propozice soutěží, formuláře a zápisy na jednom místě.</p>'
+  if (S.seesAll) {
+    const add = el('button', 'btn primary', '+ Nahrát dokument')
+    add.onclick = () => openDoc(null)
+    h.appendChild(add)
+  }
+  m.appendChild(h)
+
+  const f = el('div', 'filters')
+  f.innerHTML = `
+    <select id="dt">${teamOptions(S.docFilter.team, S.seesAll ? 'Všechny týmy' : 'Vše, co mi patří')}</select>
+    <input id="dq" placeholder="Hledat v názvech…" value="${esc(S.docFilter.q)}">`
+  m.appendChild(f)
+  $('#dt', f).onchange = e => { S.docFilter.team = e.target.value; render() }
+  $('#dq', f).oninput = e => { S.docFilter.q = e.target.value; renderDocList() }
+
+  const wrap = el('div'); wrap.id = 'dl'; m.appendChild(wrap)
+  renderDocList()
+}
+function renderDocList() {
+  const w = $('#dl'); if (!w) return
+  w.innerHTML = ''
+  let a = [...S.docs]
+  if (S.docFilter.team) a = a.filter(d => d.team_id === S.docFilter.team)
+  if (S.docFilter.q) {
+    const q = S.docFilter.q.toLowerCase()
+    a = a.filter(d => (d.title + ' ' + (d.description || '') + ' ' + d.file_name).toLowerCase().includes(q))
+  }
+  if (!a.length) {
+    const c = el('section', 'card')
+    c.appendChild(el('div', 'empty', S.docs.length ? 'Žádný dokument neodpovídá filtru.'
+      : S.seesAll ? 'Zatím tu nic není. Nahraj první dokument tlačítkem nahoře.'
+        : 'Zatím tu pro tebe nejsou žádné dokumenty.'))
+    return w.appendChild(c)
+  }
+  Object.entries(DOC_CATS).forEach(([key, label]) => {
+    const items = a.filter(d => (d.category || 'ostatni') === key)
+    if (!items.length) return
+    const sec = el('section', 'card')
+    sec.appendChild(el('div', 'card-h', `<h3>${label}</h3><span class="pill">${items.length}</span>`))
+    items.forEach(d => sec.appendChild(docRow(d)))
+    w.appendChild(sec)
+  })
+}
+function docRow(d) {
+  const r = el('div', 'drow')
+  r.innerHTML = `
+    <div class="dic">${fileIcon(d.file_name)}</div>
+    <div class="db">
+      <b>${esc(d.title)}</b>
+      <span>${d.team_id ? `<i class="tm">${esc(teamName(d.team_id))}</i>` : '<i class="tm all">celý klub</i>'}
+        ${esc(d.file_name)}${d.size_bytes ? ' · ' + fmtSize(d.size_bytes) : ''} · ${fmtDate(d.created_at)}${d.uploaded_by ? ' · ' + esc(personName(d.uploaded_by)) : ''}</span>
+      ${d.description ? `<span class="dd">${esc(d.description)}</span>` : ''}
+    </div>
+    <div class="ba"></div>`
+  const b = r.querySelector('.ba')
+  const dl = el('button', 'btn sm', 'Stáhnout')
+  dl.onclick = () => downloadDoc(d)
+  b.appendChild(dl)
+  if (S.seesAll) {
+    const ed = el('button', 'btn ghost sm', 'Upravit')
+    ed.onclick = () => openDoc(d)
+    b.appendChild(ed)
+  }
+  return r
+}
+async function downloadDoc(d) {
+  const { data, error } = await sb.storage.from('bc-docs').createSignedUrl(d.file_path, 60, { download: d.file_name })
+  if (error) return toast('Soubor se nepodařilo otevřít: ' + error.message, true)
+  const a = document.createElement('a')
+  a.href = data.signedUrl; a.rel = 'noopener'; a.click()
+}
+function openDoc(d) {
+  const isNew = !d
+  modal(isNew ? 'Nahrát dokument' : 'Upravit dokument', `
+    ${isNew ? `<label>Soubor<input id="d_f" type="file">
+      <small class="hint">PDF, Word, Excel, obrázky i ZIP. Nejvýše 25 MB na soubor.</small></label>` :
+      `<p class="stnote">Soubor: <b>${esc(d.file_name)}</b>${d.size_bytes ? ' · ' + fmtSize(d.size_bytes) : ''}. Sám soubor vyměnit nejde — nahraj nový a starý smaž.</p>`}
+    <label>Název<input id="d_t" value="${esc(d?.title)}" placeholder="Např. Směrnice o členských příspěvcích 2027"></label>
+    <div class="row">
+      <label>Zařazení<select id="d_c">${Object.entries(DOC_CATS).map(([k, v]) => `<option value="${k}" ${(d?.category || 'smernice') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label>Zobrazit komu<select id="d_team">${teamOptions(d?.team_id, '— celému klubu —')}</select></label>
+    </div>
+    <label>Popis<textarea id="d_d" rows="2" placeholder="K čemu dokument je, od kdy platí…">${esc(d?.description)}</textarea></label>
+    <small class="hint">Když vybereš tým, dokument uvidí jen jeho členové (a správci s výborem). Bez týmu ho uvidí každý schválený člen klubu.</small>
+  `, [
+    !isNew && {
+      label: 'Smazat', cls: 'danger', act: async () => {
+        if (!confirm('Opravdu smazat dokument i soubor?')) return
+        const { error } = await sb.from('bc_document').delete().eq('id', d.id)
+        if (error) return toast(error.message, true)
+        await sb.storage.from('bc-docs').remove([d.file_path])
+        closeModal(); await loadAll(); render(); toast('Dokument smazán')
+      }
+    },
+    { label: isNew ? 'Nahrát' : 'Uložit', cls: 'primary', act: isNew ? uploadDoc : saveDoc },
+  ].filter(Boolean))
+
+  if (isNew) $('#d_f').onchange = e => {
+    const f = e.target.files[0]
+    if (f && !$('#d_t').value.trim()) $('#d_t').value = f.name.replace(/\.[^.]+$/, '')
+  }
+
+  async function saveDoc() {
+    const up = {
+      title: $('#d_t').value.trim(), category: $('#d_c').value,
+      team_id: $('#d_team').value || null, description: $('#d_d').value.trim() || null,
+    }
+    if (!up.title) return toast('Vyplň název dokumentu', true)
+    const { error } = await sb.from('bc_document').update(up).eq('id', d.id)
+    if (error) return toast(error.message, true)
+    closeModal(); await loadAll(); render(); toast('Uloženo')
+  }
+  async function uploadDoc(ev) {
+    const file = $('#d_f').files[0]
+    const title = $('#d_t').value.trim()
+    if (!file) return toast('Vyber soubor', true)
+    if (!title) return toast('Vyplň název dokumentu', true)
+    if (file.size > 25 * 1024 * 1024) return toast('Soubor je větší než 25 MB', true)
+    const btn = ev.target; btn.disabled = true; btn.textContent = 'Nahrávám…'
+    const safe = file.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9._-]/g, '_').slice(-120)
+    const path = `${crypto.randomUUID()}/${safe}`
+    const up = await sb.storage.from('bc-docs').upload(path, file, { contentType: file.type || undefined })
+    if (up.error) { btn.disabled = false; btn.textContent = 'Nahrát'; return toast('Nahrání selhalo: ' + up.error.message, true) }
+    const { error } = await sb.from('bc_document').insert({
+      title, category: $('#d_c').value, team_id: $('#d_team').value || null,
+      description: $('#d_d').value.trim() || null,
+      file_path: path, file_name: file.name, mime: file.type || null, size_bytes: file.size,
+      uploaded_by: S.me.id,
+    })
+    if (error) {
+      await sb.storage.from('bc-docs').remove([path])
+      btn.disabled = false; btn.textContent = 'Nahrát'
+      return toast(error.message, true)
+    }
+    closeModal(); await loadAll(); render(); toast('Dokument nahrán')
   }
 }
 

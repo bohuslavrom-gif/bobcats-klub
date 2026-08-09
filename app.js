@@ -7,7 +7,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY)
 /* ============ stav ============ */
 const S = {
   user: null, me: null,
-  profiles: [], teams: [], tasks: [], events: [], lists: [], items: [],
+  profiles: [], teams: [], tasks: [], events: [], lists: [], items: [], memberships: [],
   view: 'dash',
   filter: { who: 'all', team: '', status: 'open', q: '' },
   cal: new Date(),
@@ -52,17 +52,68 @@ const CHK = { done: 'Máme', partial: 'Částečně', missing: 'Chybí' }
 
 /* ============ data ============ */
 async function loadAll() {
-  const [pr, tm, tk, ev, cl, ci] = await Promise.all([
+  const [pr, tm, tk, ev, cl, ci, ms] = await Promise.all([
     sb.from('bc_profile').select('*').order('full_name'),
     sb.from('bc_team').select('*').order('sort'),
     sb.from('bc_task').select('*').order('due_date', { nullsFirst: false }),
     sb.from('bc_event').select('*').order('starts_at'),
     sb.from('bc_checklist').select('*').order('sort'),
     sb.from('bc_checklist_item').select('*').order('sort'),
+    sb.from('bc_membership').select('*'),
   ])
   S.profiles = pr.data || []; S.teams = tm.data || []; S.tasks = tk.data || []
   S.events = ev.data || []; S.lists = cl.data || []; S.items = ci.data || []
+  S.memberships = ms.data || []
   S.me = S.profiles.find(p => p.id === S.user.id) || S.me
+  S.seesAll = !!S.me.is_admin || S.memberships.some(m => m.profile_id === S.me.id && S.teams.find(t => t.id === m.team_id)?.kind === 'vybor')
+  S.myTeams = S.memberships.filter(m => m.profile_id === S.me.id).map(m => m.team_id)
+}
+const teamsOf = id => S.memberships.filter(m => m.profile_id === id).map(m => m.team_id)
+
+/* ============ export do kalendáře ============ */
+function evEnd(e) {
+  if (e.ends_at) return new Date(e.ends_at)
+  return new Date(new Date(e.starts_at).getTime() + 90 * 60000)
+}
+function evDetail(e) {
+  const parts = []
+  if (e.note) parts.push(e.note)
+  if (e.meet_url) parts.push('Online schůzka: ' + e.meet_url)
+  if (e.team_id) parts.push('Tým: ' + teamName(e.team_id))
+  parts.push('Příbram Bobcats — Řízení klubu')
+  return parts.join('\n\n')
+}
+const gStamp = d => new Date(d).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+function googleCalUrl(e) {
+  const p = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: e.title,
+    dates: `${gStamp(e.starts_at)}/${gStamp(evEnd(e))}`,
+    details: evDetail(e),
+    location: e.location || '',
+  })
+  return 'https://calendar.google.com/calendar/render?' + p.toString()
+}
+function downloadIcs(e) {
+  const fold = s => (s || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;')
+  const ics = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Pribram Bobcats//Rizeni klubu//CS',
+    'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT',
+    `UID:${e.id || Math.random().toString(36).slice(2)}@bobcats`,
+    `DTSTAMP:${gStamp(new Date())}`,
+    `DTSTART:${gStamp(e.starts_at)}`,
+    `DTEND:${gStamp(evEnd(e))}`,
+    `SUMMARY:${fold(e.title)}`,
+    `DESCRIPTION:${fold(evDetail(e))}`,
+    e.location ? `LOCATION:${fold(e.location)}` : '',
+    e.meet_url ? `URL:${e.meet_url}` : '',
+    'BEGIN:VALARM', 'TRIGGER:-PT60M', 'ACTION:DISPLAY', `DESCRIPTION:${fold(e.title)}`, 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR',
+  ].filter(Boolean).join('\r\n')
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }))
+  a.download = (e.title || 'udalost').replace(/[^\p{L}\p{N} _-]/gu, '').slice(0, 60) + '.ics'
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000)
 }
 
 /* ============ auth obrazovka ============ */
@@ -132,7 +183,7 @@ function renderShell() {
   document.body.innerHTML = `
   <header class="top">
     <div class="brand"><img src="./logo-white.png"><div><b>Příbram Bobcats</b><span>Řízení klubu</span></div></div>
-    <nav class="nav">${NAV.map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
+    <nav class="nav">${NAV.filter(([k]) => k !== 'check' || S.seesAll).map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
     <div class="me">
       <div class="who"><b>${esc(S.me.full_name || S.me.email)}</b><span>${esc(S.me.role_title || (S.me.is_admin ? 'správce' : 'člen'))}</span></div>
       <button class="btn ghost sm" id="logout">Odhlásit</button>
@@ -148,7 +199,7 @@ function render() {
   if (S.view === 'dash') viewDash(m)
   if (S.view === 'tasks') viewTasks(m)
   if (S.view === 'cal') viewCal(m)
-  if (S.view === 'check') viewCheck(m)
+  if (S.view === 'check') { if (S.seesAll) viewCheck(m); else { S.view = 'dash'; return render() } }
   if (S.view === 'people') viewPeople(m)
 }
 
@@ -190,7 +241,8 @@ function viewDash(m) {
   upcoming.forEach(e => {
     const r = el('div', 'evrow', `<div class="evd"><b>${new Date(e.starts_at).getDate()}.</b><span>${MONTHS[new Date(e.starts_at).getMonth()].slice(0, 3)}</span></div>
       <div class="evb"><b>${esc(e.title)}</b><span>${EVENT_KINDS[e.kind] || ''}${e.team_id ? ' · ' + esc(teamName(e.team_id)) : ''}${e.location ? ' · ' + esc(e.location) : ''}</span></div>
-      <div class="evt">${fmtDateTime(e.starts_at)}</div>`)
+      <div class="evt">${fmtDateTime(e.starts_at)}${e.meet_url ? `<a class="btn meet xs" href="${esc(e.meet_url)}" target="_blank" rel="noopener" title="Připojit se ke schůzce">Připojit se</a>` : ''}</div>`)
+    r.querySelector('.evb').onclick = () => openEvent(e)
     c2.appendChild(r)
   })
   grid.appendChild(c2)
@@ -214,17 +266,19 @@ function viewDash(m) {
   })
   m.appendChild(sec)
 
-  // checklist souhrn
-  const cs = el('section', 'card')
-  cs.appendChild(el('div', 'card-h', '<h3>Audit klubu — stav</h3>'))
-  const cg = el('div', 'chips')
-  S.lists.forEach(l => {
-    const its = S.items.filter(i => i.checklist_id === l.id)
-    const d = its.filter(i => i.status === 'done').length
-    cg.appendChild(el('div', 'chip', `<b>${esc(l.title)}</b><span>${d} z ${its.length} splněno</span><div class="bar sm"><i style="width:${its.length ? d / its.length * 100 : 0}%"></i></div>`))
-  })
-  cs.appendChild(cg)
-  m.appendChild(cs)
+  // checklist souhrn — jen správci a výbor
+  if (S.seesAll) {
+    const cs = el('section', 'card')
+    cs.appendChild(el('div', 'card-h', '<h3>Audit klubu — stav</h3>'))
+    const cg = el('div', 'chips')
+    S.lists.forEach(l => {
+      const its = S.items.filter(i => i.checklist_id === l.id)
+      const d = its.filter(i => i.status === 'done').length
+      cg.appendChild(el('div', 'chip', `<b>${esc(l.title)}</b><span>${d} z ${its.length} splněno</span><div class="bar sm"><i style="width:${its.length ? d / its.length * 100 : 0}%"></i></div>`))
+    })
+    cs.appendChild(cg)
+    m.appendChild(cs)
+  }
 }
 
 function taskRow(t, compact) {
@@ -392,7 +446,7 @@ function viewCal(m) {
     const cell = el('div', 'cd' + (out ? ' out' : '') + (key === today() ? ' now' : ''))
     cell.appendChild(el('div', 'cdn', String(d.getDate())))
     S.events.filter(e => iso(e.starts_at) === key).forEach(e => {
-      const it = el('div', 'ce k-' + e.kind, `<b>${new Date(e.starts_at).getHours() ? new Date(e.starts_at).getHours() + ':' + String(new Date(e.starts_at).getMinutes()).padStart(2, '0') + ' ' : ''}</b>${esc(e.title)}`)
+      const it = el('div', 'ce k-' + e.kind, `<b>${new Date(e.starts_at).getHours() ? new Date(e.starts_at).getHours() + ':' + String(new Date(e.starts_at).getMinutes()).padStart(2, '0') + ' ' : ''}</b>${e.meet_url ? '<i class="camic" title="Online schůzka">▶</i>' : ''}${esc(e.title)}`)
       it.onclick = ev => { ev.stopPropagation(); openEvent(e) }
       cell.appendChild(it)
     })
@@ -415,34 +469,54 @@ function openEvent(e, presetDate) {
   const dt = e ? new Date(e.starts_at) : null
   const dval = e ? iso(e.starts_at) : (presetDate || today())
   const tval = e ? `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}` : '18:00'
+  const end = e ? evEnd(e) : null
+  const eval_ = end ? `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}` : '19:30'
   modal(isNew ? 'Nová událost' : 'Událost', `
     <label>Název<input id="e_t" value="${esc(e?.title)}" placeholder="Např. Trénink U15"></label>
     <div class="row">
       <label>Typ<select id="e_k">${Object.entries(EVENT_KINDS).map(([k, v]) => `<option value="${k}" ${(e?.kind || 'training') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       <label>Datum<input id="e_d" type="date" value="${dval}"></label>
-      <label>Čas<input id="e_h" type="time" value="${tval}"></label>
+      <label>Od<input id="e_h" type="time" value="${tval}"></label>
+      <label>Do<input id="e_e" type="time" value="${eval_}"></label>
     </div>
     <div class="row">
-      <label>Tým<select id="e_team"><option value="">— žádný —</option>${S.teams.map(x => `<option value="${x.id}" ${e?.team_id === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+      <label>Tým<select id="e_team"><option value="">— klubová akce, vidí všichni —</option>${S.teams.map(x => `<option value="${x.id}" ${e?.team_id === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
       <label>Místo<input id="e_l" value="${esc(e?.location)}" placeholder="Hřiště, adresa"></label>
     </div>
+    <label>Odkaz na online schůzku
+      <input id="e_m" value="${esc(e?.meet_url)}" placeholder="https://meet.google.com/...">
+      <small class="hint">Vytvoř si schůzku na <a href="https://meet.new" target="_blank" rel="noopener">meet.new</a> a odkaz sem vlož. Funguje i Zoom nebo Teams.</small>
+    </label>
     <label>Poznámka<textarea id="e_n" rows="2">${esc(e?.note)}</textarea></label>
+    ${isNew ? '' : `<div class="expbar">
+      <a class="btn ghost sm" id="e_gc" href="${esc(googleCalUrl(e))}" target="_blank" rel="noopener">Přidat do Google kalendáře</a>
+      <button class="btn ghost sm" id="e_ics" type="button">Stáhnout .ics</button>
+      ${e.meet_url ? `<a class="btn meet sm" href="${esc(e.meet_url)}" target="_blank" rel="noopener">Připojit se ke schůzce</a>` : ''}
+    </div>`}
   `, [
     !isNew && { label: 'Smazat', cls: 'danger', act: async () => { if (!confirm('Smazat událost?')) return; await sb.from('bc_event').delete().eq('id', e.id); closeModal(); await loadAll(); render() } },
     {
       label: 'Uložit', cls: 'primary', act: async () => {
+        const d = $('#e_d').value
+        const st = new Date(d + 'T' + ($('#e_h').value || '00:00'))
+        let en = $('#e_e').value ? new Date(d + 'T' + $('#e_e').value) : null
+        if (en && en <= st) en = new Date(en.getTime() + 86400000) // přes půlnoc
         const p = {
           title: $('#e_t').value.trim(), kind: $('#e_k').value,
-          starts_at: new Date($('#e_d').value + 'T' + ($('#e_h').value || '00:00')).toISOString(),
-          team_id: $('#e_team').value || null, location: $('#e_l').value.trim(), note: $('#e_n').value.trim(),
+          starts_at: st.toISOString(), ends_at: en ? en.toISOString() : null,
+          team_id: $('#e_team').value || null, location: $('#e_l').value.trim(),
+          meet_url: $('#e_m').value.trim() || null, note: $('#e_n').value.trim(),
         }
         if (!p.title) return toast('Vyplň název události', true)
+        if (p.meet_url && !/^https?:\/\//i.test(p.meet_url)) p.meet_url = 'https://' + p.meet_url
+        if (isNew) p.created_by = S.me.id
         const r = isNew ? await sb.from('bc_event').insert(p) : await sb.from('bc_event').update(p).eq('id', e.id)
         if (r.error) return toast(r.error.message, true)
         closeModal(); await loadAll(); render(); toast('Uloženo')
       }
     },
   ].filter(Boolean))
+  if (!isNew) $('#e_ics').onclick = () => downloadIcs(e)
 }
 
 /* ============ CHECKLISTY ============ */
@@ -517,10 +591,30 @@ function viewPeople(m) {
   S.profiles.filter(p => p.approved).forEach(p => {
     const open = S.tasks.filter(t => t.assignee_id === p.id && t.status !== 'done').length
     const late = S.tasks.filter(t => t.assignee_id === p.id && t.status !== 'done' && t.due_date && t.due_date < today()).length
+    const mine = teamsOf(p.id)
+    const board = mine.some(id => S.teams.find(t => t.id === id)?.kind === 'vybor')
     const r = el('div', 'prow2')
-    r.innerHTML = `<div><b>${esc(p.full_name || p.email)}${p.is_admin ? ' <i class="tag">správce</i>' : ''}</b><span>${esc(p.role_title || '—')} · ${esc(p.email)}</span></div>
+    r.innerHTML = `<div><b>${esc(p.full_name || p.email)}${p.is_admin ? ' <i class="tag">správce</i>' : ''}${board && !p.is_admin ? ' <i class="tag">výbor</i>' : ''}</b><span>${esc(p.role_title || '—')} · ${esc(p.email)}</span>
+        <span class="tms">${mine.length ? mine.map(id => `<i class="tm">${esc(teamName(id))}</i>`).join('') : '<i class="tm none">bez týmu — vidí jen klubové akce</i>'}</span></div>
       <div class="cnt">${open} otevřených${late ? ` <em>· ${late} po termínu</em>` : ''}</div>`
     const b = el('div', 'ba')
+    if (S.seesAll) {
+      const tb = el('button', 'btn ghost sm', 'Týmy')
+      tb.onclick = () => modal(`Týmy — ${p.full_name || p.email}`, `
+        <p class="hint">Zaškrtnutá zařazení určují, co člen v aplikaci uvidí: úkoly a události svých týmů plus vše klubové. Členství ve Výkonném výboru odemyká plný přehled včetně auditu.</p>
+        <div class="tmgrid">${S.teams.map(t => `<label class="chkline"><input type="checkbox" class="tmx" value="${t.id}" ${mine.includes(t.id) ? 'checked' : ''}> ${esc(t.name)}${t.kind === 'vybor' ? ' <i class="tag">plný přístup</i>' : ''}</label>`).join('')}</div>`,
+        [{
+          label: 'Uložit', cls: 'primary', act: async () => {
+            const want = [...document.querySelectorAll('.tmx')].filter(x => x.checked).map(x => x.value)
+            const add = want.filter(id => !mine.includes(id))
+            const rem = mine.filter(id => !want.includes(id))
+            if (rem.length) await sb.from('bc_membership').delete().eq('profile_id', p.id).in('team_id', rem)
+            if (add.length) await sb.from('bc_membership').insert(add.map(team_id => ({ profile_id: p.id, team_id })))
+            closeModal(); await loadAll(); render(); toast('Zařazení uloženo')
+          }
+        }])
+      b.appendChild(tb)
+    }
     if (S.me.is_admin || p.id === S.me.id) {
       const ed = el('button', 'btn ghost sm', 'Upravit')
       ed.onclick = () => modal('Upravit člena', `

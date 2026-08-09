@@ -207,3 +207,21 @@ main{max-width:1180px;margin:0 auto;padding:22px 18px 60px}
   .cd{min-height:70px}
   .mb .row{flex-direction:column;gap:0}
 }
+
+/* ==== online schůzka + export do kalendáře ==== */
+.btn.meet{background:#1a73e8;color:#fff;border-color:#1a73e8}
+.btn.meet:hover{background:#1666d0;border-color:#1666d0}
+.btn.xs{padding:2px 8px;font-size:11px;line-height:18px;margin-left:8px}
+.camic{font-style:normal;color:#1a73e8;margin-right:3px;font-size:9px;vertical-align:1px}
+.expbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.expbar .btn{text-decoration:none;display:inline-flex;align-items:center}
+.hint{font-size:11.5px;color:var(--grey);font-weight:400;line-height:1.5;margin:4px 0 0}
+.hint a{color:var(--red)}
+label small.hint{display:block}
+.evrow .evb{cursor:pointer}
+.evrow .evb:hover b{color:var(--red)}
+.tms{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.tm{font-style:normal;font-size:10.5px;background:#f0f0ef;border:1px solid var(--line);border-radius:4px;padding:1px 6px;color:#555}
+.tm.none{background:none;border-style:dashed;color:var(--grey)}
+.tmgrid{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;max-height:46vh;overflow:auto}
+@media(max-width:640px){.tmgrid{grid-template-columns:1fr}}

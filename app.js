@@ -431,7 +431,8 @@ async function openTask(t) {
   const d = ro ? ' disabled' : ''
   const cmts = isNew ? [] : (await sb.from('bc_task_comment').select('*').eq('task_id', t.id).order('created_at')).data || []
   modal(`${isNew ? 'Nový úkol' : 'Úkol'}`, `
-    ${ro ? `<p class="ronote">Úkol zadal <b>${esc(personName(t.created_by) || 'někdo jiný')}</b>, takže ho může upravovat a mazat jen on. Ty ho můžeš označit jako hotový a psát k němu poznámky.</p>` : ''}
+    ${ro ? `<p class="ronote">Úkol zadal <b>${esc(personName(t.created_by) || 'někdo jiný')}</b>, takže ho může upravovat a mazat jen on. Ty k němu můžeš psát poznámky a odškrtnout ho v seznamu jako hotový.</p>` : ''}
+    ${isNew ? '' : `<p class="stnote">${t.status === 'done' ? 'Úkol je splněný.' : 'Úkol je otevřený.'} Stav se přepíná čtverečkem u úkolu v seznamu.</p>`}
     <label>Název úkolu<input id="m_title" value="${esc(t?.title)}" placeholder="Co je potřeba udělat"${d}></label>
     <label>Popis<textarea id="m_detail" rows="3" placeholder="Doplňující informace"${d}>${esc(t?.detail)}</textarea></label>
     <div class="row">
@@ -450,7 +451,6 @@ async function openTask(t) {
       <div class="row"><input id="m_cmt" placeholder="Napsat poznámku (např. stav plnění)…"><button class="btn sm" id="m_cadd">Přidat</button></div>
     </div>`}
   `, [
-    !isNew && { label: t.status === 'done' ? 'Vrátit rozpracované' : 'Označit jako hotové', cls: 'ok', act: async () => { closeModal(); toggleTask(t) } },
     !isNew && !ro && { label: 'Smazat', cls: 'danger', act: async () => { if (!confirm('Opravdu smazat tento úkol?')) return; const { error } = await sb.from('bc_task').delete().eq('id', t.id); if (error) return toast(error.message, true); closeModal(); await loadAll(); render(); toast('Úkol smazán') } },
     !ro && { label: 'Uložit', cls: 'primary', act: saveTask },
   ].filter(Boolean))

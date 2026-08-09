@@ -308,3 +308,14 @@ label small.hint{display:block}
 .chks{display:flex;gap:14px;flex-wrap:wrap;margin-top:5px}
 .chkline.inline{display:inline-flex;align-items:center;gap:5px;font-size:13px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink)}
 @media(max-width:640px){.porow{flex-wrap:wrap}.post-st{margin-left:53px}}
+.post-st.go{border:0;cursor:pointer;font-family:'Barlow Condensed','Montserrat',sans-serif}
+.post-st.go:hover{filter:brightness(.94);box-shadow:0 0 0 2px rgba(0,0,0,.07)}
+.stmenu{position:fixed;z-index:80;background:#fff;border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.2);padding:5px;min-width:186px}
+.sti{display:flex;align-items:center;gap:9px;width:100%;border:0;background:none;padding:8px 11px;border-radius:7px;font-size:13px;cursor:pointer;text-align:left;color:var(--ink)}
+.sti:hover{background:#F4F4F5}
+.sti.on{font-weight:700}
+.sti i{width:9px;height:9px;border-radius:50%;background:#C8C8C8;flex-shrink:0}
+.sti.s-psani i{background:#5B3E9E}
+.sti.s-schvaleni i{background:#C79000}
+.sti.s-naplanovano i{background:#1877F2}
+.sti.s-zverejneno i{background:var(--ok)}

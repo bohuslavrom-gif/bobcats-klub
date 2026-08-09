@@ -619,9 +619,34 @@ function postRow(p) {
       <span>${chanTags(p.channels)}${p.rubric_id ? `<i class="tm">${esc(S.rubrics.find(x => x.id === p.rubric_id)?.title || '')}</i>` : ''}${p.owner_id ? ' ' + esc(personName(p.owner_id)) : ''}${p.publish_time ? ' · ' + p.publish_time.slice(0, 5) : ''}</span>
       ${p.body ? `<span class="pox">${esc(p.body.slice(0, 120))}${p.body.length > 120 ? '…' : ''}</span>` : ''}
     </div>
-    <div class="post-st s-${p.status}">${POST_STATUS[p.status] || p.status}</div>`
+    <button class="post-st go s-${p.status}" title="Klepnutím změníš stav">${POST_STATUS[p.status] || p.status}</button>`
   r.onclick = () => openPost(p)
+  r.querySelector('.post-st').onclick = e => { e.stopPropagation(); statusMenu(e.currentTarget, p) }
   return r
+}
+// změna stavu přímo v seznamu, bez otevírání příspěvku
+function statusMenu(anchor, p) {
+  $('#stmenu')?.remove()
+  const box = anchor.getBoundingClientRect()
+  const menu = el('div', 'stmenu'); menu.id = 'stmenu'
+  Object.entries(POST_STATUS).forEach(([k, v]) => {
+    const b = el('button', 'sti s-' + k + (k === p.status ? ' on' : ''), `<i></i>${v}`)
+    b.onclick = async ev => {
+      ev.stopPropagation(); menu.remove()
+      if (k === p.status) return
+      const { error } = await sb.from('bc_post').update({ status: k }).eq('id', p.id)
+      if (error) return toast(error.message, true)
+      await loadAll(); render(); toast('Stav změněn na „' + v + '"')
+    }
+    menu.appendChild(b)
+  })
+  document.body.appendChild(menu)
+  const h = menu.offsetHeight
+  menu.style.top = (box.bottom + h + 8 > innerHeight ? Math.max(8, box.top - h - 6) : box.bottom + 6) + 'px'
+  menu.style.left = Math.max(8, Math.min(box.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 8)) + 'px'
+  const close = ev => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', close) } }
+  setTimeout(() => document.addEventListener('click', close), 0)
+  document.addEventListener('keydown', function esc(ev) { if (ev.key === 'Escape') { menu.remove(); document.removeEventListener('keydown', esc) } })
 }
 function openRubric(r) {
   const isNew = !r

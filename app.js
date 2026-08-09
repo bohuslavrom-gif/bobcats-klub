@@ -120,7 +120,7 @@ function evDetail(e) {
   if (e.note) parts.push(e.note)
   if (e.meet_url) parts.push('Online schůzka: ' + e.meet_url)
   if (e.team_id) parts.push('Tým: ' + teamName(e.team_id))
-  parts.push('Příbram Bobcats — Řízení klubu')
+  parts.push('Příbram Bobcats — Management klubu')
   return parts.join('\n\n')
 }
 const gStamp = d => new Date(d).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
@@ -137,7 +137,7 @@ function googleCalUrl(e) {
 function downloadIcs(e) {
   const fold = s => (s || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;')
   const ics = [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Pribram Bobcats//Rizeni klubu//CS',
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Pribram Bobcats//Management klubu//CS',
     'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT',
     `UID:${e.id || Math.random().toString(36).slice(2)}@bobcats`,
     `DTSTAMP:${gStamp(new Date())}`,
@@ -164,7 +164,7 @@ function renderAuth(mode = 'login') {
     <div class="auth-card">
       <img class="auth-logo" src="./logo-red.png" alt="Bobcats">
       <div class="auth-kicker">Příbram Bobcats</div>
-      <h1 class="auth-h1">Řízení klubu</h1>
+      <h1 class="auth-h1">Management klubu</h1>
       <p class="auth-sub">${mode === 'login' ? 'Přihlas se svým klubovým účtem.' : 'Vytvoř si účet — přístup ti pak schválí správce.'}</p>
       <form id="af">
         ${mode === 'signup' ? '<label>Jméno a příjmení<input id="an" required placeholder="Jan Novák"></label>' : ''}
@@ -222,7 +222,7 @@ function renderShell() {
   document.body.className = ''
   document.body.innerHTML = `
   <header class="top">
-    <div class="brand"><img src="./logo-white.png"><div><b>Příbram Bobcats</b><span>Řízení klubu</span></div></div>
+    <div class="brand"><img src="./logo-white.png"><div><b>Příbram Bobcats</b><span>Management klubu</span></div></div>
     <nav class="nav">${NAV.filter(([k]) => k === 'mkt' ? S.isMkt : ((k !== 'check' && k !== 'people') || S.seesAll)).map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
     <div class="me">
       <div class="bell" id="bell" title="Upozornění">

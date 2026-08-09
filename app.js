@@ -264,17 +264,26 @@ function viewDash(m) {
   const over = open.filter(t => t.due_date && t.due_date < today())
   const soon = open.filter(t => t.due_date && daysLeft(t.due_date) >= 0 && daysLeft(t.due_date) <= 7)
   const mine = open.filter(t => t.assignee_id === S.me.id)
+  const given = open.filter(t => t.created_by === S.me.id)
+  const givenLate = given.filter(t => t.due_date && t.due_date < today())
   const upcoming = S.events.filter(e => new Date(e.starts_at) >= new Date(today())).slice(0, 6)
 
   m.appendChild(el('div', 'head', `<h2>Přehled</h2><p>${new Date().toLocaleDateString('cs-CZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>`))
 
-  const st = el('div', 'stats st3')
+  // dlaždice vedou po kliknutí do Úkolů na odpovídající filtr
+  const st = el('div', 'stats')
   const cards = [
-    [over.length, 'Po termínu', over.length ? 'red' : ''],
-    [soon.length, 'Termín do 7 dnů', ''],
-    [mine.length, 'Moje otevřené úkoly', ''],
+    [over.length, 'Po termínu', over.length ? 'red' : '', { status: 'late', who: 'all' }],
+    [soon.length, 'Termín do 7 dnů', '', { status: 'open', who: 'all' }],
+    [mine.length, 'Moje otevřené úkoly', '', { status: 'open', who: 'mine' }],
+    [given.length, 'Úkoly, které jsem zadal', '', { status: 'open', who: 'created' }],
+    [givenLate.length, 'Ze zadaných po termínu', givenLate.length ? 'red' : '', { status: 'late', who: 'created' }],
   ]
-  cards.forEach(([n, l, c]) => st.appendChild(el('div', 'stat ' + c, `<b>${n}</b><span>${l}</span>`)))
+  cards.forEach(([n, l, c, f]) => {
+    const card = el('div', 'stat go ' + c, `<b>${n}</b><span>${l}</span>`)
+    card.onclick = () => { S.filter = { ...S.filter, ...f, team: '', q: '' }; S.view = 'tasks'; render() }
+    st.appendChild(card)
+  })
   m.appendChild(st)
 
   const grid = el('div', 'grid2')
@@ -300,6 +309,20 @@ function viewDash(m) {
   })
   grid.appendChild(c2)
   m.appendChild(grid)
+
+  // co jsem zadal a čeká to na ostatní
+  const waiting = given.filter(t => t.assignee_id !== S.me.id)
+    .sort((a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999'))
+  const gs = el('section', 'card')
+  gs.appendChild(el('div', 'card-h', `<h3>Zadal jsem — čeká na ostatní</h3>${givenLate.length ? `<span class="pill">${givenLate.length} po termínu</span>` : ''}`))
+  if (!waiting.length) gs.appendChild(el('div', 'empty', 'Nikomu jsi teď nic nezadal, nebo je vše hotové.'))
+  waiting.slice(0, 8).forEach(t => gs.appendChild(taskRow(t, true)))
+  if (waiting.length > 8) {
+    const more = el('div', 'moreline', `<button class="lnk">Zobrazit všech ${waiting.length}</button>`)
+    more.querySelector('button').onclick = () => { S.filter = { ...S.filter, status: 'open', who: 'created', team: '', q: '' }; S.view = 'tasks'; render() }
+    gs.appendChild(more)
+  }
+  m.appendChild(gs)
 
   // plnění po týmech
   const sec = el('section', 'card')
@@ -390,7 +413,7 @@ function viewTasks(m) {
       ${[['open', 'Otevřené'], ['late', 'Po termínu'], ['done', 'Hotové'], ['all', 'Vše']].map(([k, l]) => `<button data-k="${k}" class="${S.filter.status === k ? 'on' : ''}">${l}</button>`).join('')}
     </div>
     <div class="seg" id="fw">
-      ${[['all', 'Všichni'], ['mine', 'Moje'], ['unassigned', 'Bez odpovědné osoby']].map(([k, l]) => `<button data-k="${k}" class="${S.filter.who === k ? 'on' : ''}">${l}</button>`).join('')}
+      ${[['all', 'Všichni'], ['mine', 'Moje'], ['created', 'Zadal jsem'], ['unassigned', 'Bez odpovědné osoby']].map(([k, l]) => `<button data-k="${k}" class="${S.filter.who === k ? 'on' : ''}">${l}</button>`).join('')}
     </div>
     <select id="ft">${teamOptions(S.filter.team, S.seesAll ? 'Všechny týmy' : 'Vše, co mi patří')}</select>
     <input id="fq" placeholder="Hledat…" value="${esc(S.filter.q)}">`
@@ -410,6 +433,7 @@ function filteredTasks() {
   if (F.status === 'done') a = a.filter(t => t.status === 'done')
   if (F.status === 'late') a = a.filter(t => t.status !== 'done' && t.due_date && t.due_date < today())
   if (F.who === 'mine') a = a.filter(t => t.assignee_id === S.me.id)
+  if (F.who === 'created') a = a.filter(t => t.created_by === S.me.id)
   if (F.who === 'unassigned') a = a.filter(t => !t.assignee_id)
   if (F.team) a = a.filter(t => t.team_id === F.team)
   if (F.q) { const q = F.q.toLowerCase(); a = a.filter(t => (t.title + ' ' + (t.detail || '')).toLowerCase().includes(q)) }

@@ -225,3 +225,5 @@ label small.hint{display:block}
 .tm.none{background:none;border-style:dashed;color:var(--grey)}
 .tmgrid{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;max-height:46vh;overflow:auto}
 @media(max-width:640px){.tmgrid{grid-template-columns:1fr}}
+.stats.st3{grid-template-columns:repeat(3,1fr)}
+@media(max-width:760px){.stats,.stats.st3{grid-template-columns:1fr 1fr}}

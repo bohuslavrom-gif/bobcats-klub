@@ -69,6 +69,12 @@ async function loadAll() {
   S.myTeams = S.memberships.filter(m => m.profile_id === S.me.id).map(m => m.team_id)
 }
 const teamsOf = id => S.memberships.filter(m => m.profile_id === id).map(m => m.team_id)
+// týmy, se kterými má smysl pracovat: správci a výbor všechny, ostatní jen svoje
+const myTeams = () => S.seesAll ? S.teams : S.teams.filter(t => S.myTeams.includes(t.id))
+const teamOptions = (sel, extra) => `<option value="">${extra}</option>` +
+  myTeams().map(t => `<option value="${t.id}" ${sel === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('') +
+  // tým, který už je nastavený, ale do výběru nepatří, ať se nastavení omylem nepřepíše
+  (sel && !myTeams().some(t => t.id === sel) ? `<option value="${sel}" selected>${esc(teamName(sel))}</option>` : '')
 
 /* ============ export do kalendáře ============ */
 function evEnd(e) {
@@ -209,17 +215,15 @@ function viewDash(m) {
   const over = open.filter(t => t.due_date && t.due_date < today())
   const soon = open.filter(t => t.due_date && daysLeft(t.due_date) >= 0 && daysLeft(t.due_date) <= 7)
   const mine = open.filter(t => t.assignee_id === S.me.id)
-  const doneMonth = S.tasks.filter(t => t.status === 'done' && t.completed_at && new Date(t.completed_at).getMonth() === new Date().getMonth() && new Date(t.completed_at).getFullYear() === new Date().getFullYear())
   const upcoming = S.events.filter(e => new Date(e.starts_at) >= new Date(today())).slice(0, 6)
 
   m.appendChild(el('div', 'head', `<h2>Přehled</h2><p>${new Date().toLocaleDateString('cs-CZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>`))
 
-  const st = el('div', 'stats')
+  const st = el('div', 'stats st3')
   const cards = [
     [over.length, 'Po termínu', over.length ? 'red' : ''],
     [soon.length, 'Termín do 7 dnů', ''],
     [mine.length, 'Moje otevřené úkoly', ''],
-    [doneMonth.length, 'Hotovo tento měsíc', 'green'],
   ]
   cards.forEach(([n, l, c]) => st.appendChild(el('div', 'stat ' + c, `<b>${n}</b><span>${l}</span>`)))
   m.appendChild(st)
@@ -334,7 +338,7 @@ function viewTasks(m) {
     <div class="seg" id="fw">
       ${[['all', 'Všichni'], ['mine', 'Moje'], ['unassigned', 'Bez odpovědné osoby']].map(([k, l]) => `<button data-k="${k}" class="${S.filter.who === k ? 'on' : ''}">${l}</button>`).join('')}
     </div>
-    <select id="ft"><option value="">Všechny týmy</option>${S.teams.map(t => `<option value="${t.id}" ${S.filter.team === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+    <select id="ft">${teamOptions(S.filter.team, S.seesAll ? 'Všechny týmy' : 'Vše, co mi patří')}</select>
     <input id="fq" placeholder="Hledat…" value="${esc(S.filter.q)}">`
   m.appendChild(f)
   f.querySelectorAll('#fs button').forEach(b => b.onclick = () => { S.filter.status = b.dataset.k; render() })
@@ -374,7 +378,7 @@ async function openTask(t) {
     <label>Název úkolu<input id="m_title" value="${esc(t?.title)}" placeholder="Co je potřeba udělat"></label>
     <label>Popis<textarea id="m_detail" rows="3" placeholder="Doplňující informace">${esc(t?.detail)}</textarea></label>
     <div class="row">
-      <label>Tým / sekce<select id="m_team"><option value="">— žádný —</option>${S.teams.map(x => `<option value="${x.id}" ${t?.team_id === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+      <label>Tým / sekce<select id="m_team">${teamOptions(t?.team_id, '— klubové, vidí všichni —')}</select></label>
       <label>Odpovědná osoba<select id="m_ass"><option value="">— nikdo —</option>${S.profiles.filter(p => p.approved).map(p => `<option value="${p.id}" ${t?.assignee_id === p.id ? 'selected' : ''}>${esc(p.full_name || p.email)}</option>`).join('')}</select></label>
     </div>
     <div class="row">
@@ -480,7 +484,7 @@ function openEvent(e, presetDate) {
       <label>Do<input id="e_e" type="time" value="${eval_}"></label>
     </div>
     <div class="row">
-      <label>Tým<select id="e_team"><option value="">— klubová akce, vidí všichni —</option>${S.teams.map(x => `<option value="${x.id}" ${e?.team_id === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+      <label>Tým<select id="e_team">${teamOptions(e?.team_id, '— klubová akce, vidí všichni —')}</select></label>
       <label>Místo<input id="e_l" value="${esc(e?.location)}" placeholder="Hřiště, adresa"></label>
     </div>
     <label>Odkaz na online schůzku

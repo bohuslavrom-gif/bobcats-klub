@@ -452,3 +452,45 @@ label small.hint{text-transform:none;letter-spacing:0}
     background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23B4B4B4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4'/%3E%3Cpolyline points='16 17 21 12 16 7'/%3E%3Cline x1='21' y1='12' x2='9' y2='12'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:center;background-size:17px}
 }
+
+/* ==== rozpočet ==== */
+.bstats .stat b{font-size:24px}
+.bstats .stat em{display:block;font-style:normal;font-size:10px;color:var(--grey);margin-top:3px}
+.calbar select{border:0;background:#fff;border-radius:8px;padding:8px 11px;font-weight:600;min-width:170px}
+.bghead{display:flex;align-items:center;gap:10px}
+.bghead span{margin-left:auto;text-transform:none;letter-spacing:0;font-size:11px;color:var(--ink);font-weight:700}
+.birow{display:flex;align-items:center;gap:16px;padding:11px 18px;border-bottom:1px solid #F4F4F4;cursor:pointer}
+.birow:last-child{border-bottom:0}
+.birow:hover{background:#FAFAFA}
+.birow.over{box-shadow:inset 3px 0 0 var(--red)}
+.bib{flex:1;min-width:0}
+.bib b{display:block;font-size:13.5px;font-weight:600}
+.bib span{display:block;font-size:11.5px;color:var(--grey);margin-bottom:5px}
+.bin{text-align:right;white-space:nowrap}
+.bin b{display:block;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.bin span{font-size:11px;color:var(--grey)}
+.birow.over .bin b{color:var(--red)}
+.berow{display:flex;align-items:center;gap:14px;padding:10px 18px;border-bottom:1px solid #F4F4F4}
+.berow:last-child{border-bottom:0}
+.berow:hover{background:#FAFAFA}
+.bed{font-size:11.5px;color:var(--grey);width:88px;white-space:nowrap}
+.beb{flex:1;min-width:0}
+.beb b{display:block;font-size:13px;font-weight:600}
+.beb span{display:block;font-size:11.5px;color:var(--grey)}
+.bea{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.bea.in{color:var(--ok)}
+.bigsum{background:var(--tint);border-radius:9px;padding:14px 16px;margin-bottom:14px}
+.bigsum b{display:block;font-size:26px;font-weight:800;font-family:'Barlow Condensed','Montserrat',sans-serif}
+.bigsum span{font-size:12px;color:var(--grey)}
+@media(max-width:700px){
+  .bstats{grid-template-columns:1fr 1fr}
+  .bstats .stat b{font-size:19px}
+  .birow{gap:11px;padding:11px 14px}
+  .berow{gap:10px;padding:10px 14px;flex-wrap:wrap}
+  .bed{width:auto;order:2}
+  .beb{flex:1 1 100%;order:1}
+  .bea{margin-left:auto;order:3}
+  .calbar select{flex:1;min-width:0}
+  .bghead{flex-wrap:wrap;gap:2px}
+  .bghead span{margin-left:0;flex:1 1 100%;font-size:11.5px}
+}

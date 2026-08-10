@@ -7,11 +7,12 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY)
 /* ============ stav ============ */
 const S = {
   user: null, me: null,
-  profiles: [], teams: [], tasks: [], events: [], lists: [], items: [], memberships: [], notes: [], docs: [], people: [], rubrics: [], posts: [],
+  profiles: [], teams: [], tasks: [], events: [], lists: [], items: [], memberships: [], notes: [], docs: [], people: [], rubrics: [], posts: [], budgets: [], bitems: [], bentries: [],
   view: 'dash',
   filter: { who: 'all', team: '', status: 'open', q: '' },
   docFilter: { team: '', q: '' },
   mktFilter: { status: 'plan', rubric: '' },
+  budgetYear: null, budgetView: 'category',
   cal: new Date(),
 }
 
@@ -62,6 +63,22 @@ const DOC_CATS = {
 const CHANNELS = { ig: 'Instagram', fb: 'Facebook', tt: 'TikTok', yt: 'YouTube', web: 'Web' }
 const POST_STATUS = { napad: 'Nápad', psani: 'Připravuje se', schvaleni: 'Ke schválení', naplanovano: 'Naplánováno', zverejneno: 'Zveřejněno' }
 const CADENCE = { tydne: 'Každý týden', dvakrat: '2× měsíčně', mesicne: 'Každý měsíc', sezonne: 'Sezónně / nárazově' }
+const INC_CATS = { prispevky: 'Členské příspěvky', dotace: 'Dotace a granty', sponzori: 'Sponzoři a dary', akce: 'Vlastní akce a startovné', ostatni_p: 'Ostatní příjmy' }
+const EXP_CATS = {
+  vybaveni: 'Vybavení a materiál', doprava: 'Doprava', pronajmy: 'Pronájmy hřišť a hal',
+  startovne: 'Startovné a licence', rozhodci: 'Rozhodčí a delegáti', treneri: 'Trenéři a odměny',
+  soustredeni: 'Soustředění a kempy', marketing: 'Marketing a propagace', provoz: 'Provoz a administrativa',
+  ostatni: 'Ostatní výdaje',
+}
+const catsFor = k => k === 'income' ? INC_CATS : EXP_CATS
+const catName = (k, c) => catsFor(k)[c] || c
+const czk = n => (Math.round(Number(n) || 0)).toLocaleString('cs-CZ').replace(/\u00a0/g, ' ') + ' Kč'
+const czkShort = n => {
+  const v = Number(n) || 0
+  if (Math.abs(v) >= 1000000) return (v / 1000000).toFixed(1).replace('.', ',') + ' mil.'
+  if (Math.abs(v) >= 10000) return Math.round(v / 1000) + ' tis.'
+  return czk(v)
+}
 const fmtSize = b => !b ? '' : b < 1024 * 1024 ? Math.max(1, Math.round(b / 1024)) + ' kB' : (b / 1048576).toFixed(1).replace('.', ',') + ' MB'
 const fileIcon = n => {
   const e = (n || '').split('.').pop().toLowerCase()
@@ -76,7 +93,7 @@ const fileIcon = n => {
 
 /* ============ data ============ */
 async function loadAll() {
-  const [pr, tm, tk, ev, cl, ci, ms, nt, dc, pe, ru, po] = await Promise.all([
+  const [pr, tm, tk, ev, cl, ci, ms, nt, dc, pe, ru, po, bu, bi, be] = await Promise.all([
     sb.from('bc_profile').select('*').order('full_name'),
     sb.from('bc_team').select('*').order('sort'),
     sb.from('bc_task').select('*').order('due_date', { nullsFirst: false }),
@@ -89,7 +106,12 @@ async function loadAll() {
     sb.rpc('bc_people'),
     sb.from('bc_post_rubric').select('*').order('sort'),
     sb.from('bc_post').select('*').order('publish_on', { nullsFirst: false }),
+    sb.from('bc_budget').select('*').order('year', { ascending: false }),
+    sb.from('bc_budget_item').select('*').order('sort'),
+    sb.from('bc_budget_entry').select('*').order('happened_on', { ascending: false }),
   ])
+  S.budgets = bu.data || []; S.bitems = bi.data || []; S.bentries = be.data || []
+  if (!S.budgetYear || !S.budgets.some(b => b.year === S.budgetYear)) S.budgetYear = S.budgets[0]?.year || new Date().getFullYear()
   S.rubrics = ru.data || []; S.posts = po.data || []
   S.docs = dc.data || []
   // jména všech členů bez kontaktních údajů — kvůli popiskům u úkolů, poznámek a dokumentů
@@ -225,14 +247,14 @@ function renderPending() {
 
 /* ============ layout ============ */
 const NAV = [
-  ['dash', 'Přehled'], ['tasks', 'Úkoly'], ['cal', 'Kalendář'], ['docs', 'Dokumenty'], ['mkt', 'Marketing'], ['check', 'Checklisty'], ['people', 'Lidé a týmy'],
+  ['dash', 'Přehled'], ['tasks', 'Úkoly'], ['cal', 'Kalendář'], ['docs', 'Dokumenty'], ['budget', 'Rozpočet'], ['mkt', 'Marketing'], ['check', 'Checklisty'], ['people', 'Lidé a týmy'],
 ]
 function renderShell() {
   document.body.className = ''
   document.body.innerHTML = `
   <header class="top">
     <div class="brand"><img src="./logo-white.png"><div><b>Příbram Bobcats</b><span>Management klubu</span></div></div>
-    <nav class="nav">${NAV.filter(([k]) => k === 'mkt' ? S.isMkt : ((k !== 'check' && k !== 'people') || S.seesAll)).map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
+    <nav class="nav">${NAV.filter(([k]) => k === 'mkt' ? S.isMkt : k === 'budget' ? (S.seesAll || S.bitems.length) : ((k !== 'check' && k !== 'people') || S.seesAll)).map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
     <div class="me">
       <div class="bell" id="bell" title="Upozornění">
         <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path fill="currentColor" d="M12 22a2.1 2.1 0 0 0 2.1-2.1H9.9A2.1 2.1 0 0 0 12 22Zm6.3-6.3v-5.2c0-3.2-1.7-5.9-4.7-6.6v-.7a1.6 1.6 0 0 0-3.2 0v.7c-3 .7-4.7 3.4-4.7 6.6v5.2L3.6 17.5v.9h16.8v-.9Z"/></svg>
@@ -298,6 +320,7 @@ function render() {
   if (S.view === 'cal') viewCal(m)
   if (S.view === 'docs') viewDocs(m)
   if (S.view === 'mkt') { if (S.isMkt) viewMkt(m); else { S.view = 'dash'; return render() } }
+  if (S.view === 'budget') viewBudget(m)
   if (S.view === 'check') { if (S.seesAll) viewCheck(m); else { S.view = 'dash'; return render() } }
   if (S.view === 'people') { if (S.seesAll) viewPeople(m); else { S.view = 'dash'; return render() } }
 }
@@ -561,6 +584,245 @@ async function openTask(t) {
     if (r.error) return toast(r.error.message, true)
     closeModal(); await loadAll(); render(); toast(isNew ? 'Úkol vytvořen' : 'Úkol uložen')
   }
+}
+
+/* ============ ROZPOČET ============ */
+const budget = () => S.budgets.find(b => b.year === S.budgetYear)
+const bItems = () => S.bitems.filter(i => i.budget_id === budget()?.id)
+const spent = id => S.bentries.filter(e => e.item_id === id).reduce((s, e) => s + Number(e.amount), 0)
+
+function viewBudget(m) {
+  const b = budget()
+  const h = el('div', 'head')
+  h.innerHTML = `<h2>Rozpočet</h2><p>Nejdřív se naplánuje, potom se přidává skutečné čerpání.</p>`
+  if (S.seesAll) {
+    const ai = el('button', 'btn ghost', '+ Položka'); ai.onclick = () => openBItem(null)
+    const ae = el('button', 'btn primary', '+ Čerpání'); ae.onclick = () => openBEntry(null)
+    h.append(ai, ae)
+  }
+  m.appendChild(h)
+
+  // volba roku
+  const bar = el('div', 'calbar')
+  bar.innerHTML = `<select id="by">${S.budgets.map(x => `<option value="${x.year}" ${x.year === S.budgetYear ? 'selected' : ''}>Rok ${x.year}${x.locked ? ' — uzavřený' : ''}</option>`).join('')}</select>`
+  if (S.seesAll) bar.innerHTML += `<button class="btn ghost sm" id="bnew">+ Nový rok</button>` +
+    (b ? `<button class="btn ghost sm" id="block">${b.locked ? 'Odemknout plán' : 'Uzavřít plán'}</button>` : '')
+  m.appendChild(bar)
+  $('#by', bar).onchange = e => { S.budgetYear = +e.target.value; render() }
+  if (S.seesAll) {
+    $('#bnew', bar).onclick = async () => {
+      const y = prompt('Rok nového rozpočtu:', new Date().getFullYear() + 1)
+      if (!y || !/^\d{4}$/.test(y.trim())) return
+      const { error } = await sb.from('bc_budget').insert({ year: +y })
+      if (error) return toast(error.message, true)
+      S.budgetYear = +y; await loadAll(); render(); toast('Rozpočet ' + y + ' založen')
+    }
+    if (b) $('#block', bar).onclick = async () => {
+      const { error } = await sb.from('bc_budget').update({ locked: !b.locked }).eq('id', b.id)
+      if (error) return toast(error.message, true)
+      await loadAll(); render(); toast(b.locked ? 'Plán odemčen' : 'Plán uzavřen — čerpání se dá přidávat dál')
+    }
+  }
+
+  if (!b) return m.appendChild(el('section', 'card', '<div class="empty">Zatím není založený žádný rozpočet.</div>'))
+
+  const items = bItems()
+  if (!items.length && !S.seesAll) return m.appendChild(el('section', 'card', '<div class="empty">Pro tvůj tým zatím není nic rozpočtovaného.</div>'))
+
+  const inc = items.filter(i => i.kind === 'income')
+  const exp = items.filter(i => i.kind === 'expense')
+  const sum = a => ({ plan: a.reduce((s, i) => s + Number(i.planned), 0), real: a.reduce((s, i) => s + spent(i.id), 0) })
+  const SI = sum(inc), SE = sum(exp)
+
+  // souhrn
+  const st = el('div', 'stats bstats')
+  const cards = [
+    ['Plánované příjmy', czkShort(SI.plan), '', `skutečně ${czkShort(SI.real)}`],
+    ['Plánované výdaje', czkShort(SE.plan), '', `čerpáno ${czkShort(SE.real)}`],
+    ['Plánovaný výsledek', czkShort(SI.plan - SE.plan), SI.plan - SE.plan < 0 ? 'red' : 'green', 'příjmy minus výdaje'],
+    ['Skutečný výsledek', czkShort(SI.real - SE.real), SI.real - SE.real < 0 ? 'red' : 'green', 'zatím k dnešku'],
+  ]
+  cards.forEach(([l, v, c, sub]) => st.appendChild(el('div', 'stat ' + c, `<b>${esc(v)}</b><span>${esc(l)}</span><em>${esc(sub)}</em>`)))
+  m.appendChild(st)
+
+  if (S.seesAll && SE.plan > 0) {
+    const pct = Math.min(100, Math.round(SE.real / SE.plan * 100))
+    const c = el('section', 'card')
+    c.appendChild(el('div', 'card-h', `<h3>Čerpání výdajů</h3><span class="pill">${pct} %</span>`))
+    c.appendChild(el('div', 'prow', `<div class="pn">Celkem za klub</div><div class="bar"><i style="width:${pct}%;background:${pct > 100 ? 'var(--red)' : 'var(--ok)'}"></i></div><div class="pv">${czk(SE.real)} z ${czk(SE.plan)}</div>`))
+    m.appendChild(c)
+  }
+
+  // přepínač pohledu
+  const f = el('div', 'filters')
+  f.innerHTML = `<div class="seg" id="bv">${[['category', 'Po kategoriích'], ['team', 'Po týmech'], ['entries', 'Poslední čerpání']].map(([k, l]) => `<button data-k="${k}" class="${S.budgetView === k ? 'on' : ''}">${l}</button>`).join('')}</div>`
+  m.appendChild(f)
+  f.querySelectorAll('#bv button').forEach(x => x.onclick = () => { S.budgetView = x.dataset.k; render() })
+
+  if (S.budgetView === 'entries') return m.appendChild(entriesCard(items))
+
+  const groupOf = i => S.budgetView === 'team' ? (i.team_id ? teamName(i.team_id) : 'Celý klub') : catName(i.kind, i.category)
+  ;[['income', 'Příjmy', inc], ['expense', 'Výdaje', exp]].forEach(([kind, label, arr]) => {
+    if (!arr.length) return
+    const sec = el('section', 'card')
+    const s = sum(arr)
+    sec.appendChild(el('div', 'card-h', `<h3>${label}</h3><span class="pill">${czk(s.real)} z ${czk(s.plan)}</span>`))
+    const groups = [...new Set(arr.map(groupOf))].sort((a, b2) => a.localeCompare(b2, 'cs'))
+    groups.forEach(g => {
+      const list = arr.filter(i => groupOf(i) === g)
+      const gs = sum(list)
+      sec.appendChild(el('div', 'mhead bghead', `${esc(g)} <span>${czk(gs.real)} z ${czk(gs.plan)}</span>`))
+      list.forEach(i => sec.appendChild(bItemRow(i, kind)))
+    })
+    m.appendChild(sec)
+  })
+}
+function bItemRow(i, kind) {
+  const real = spent(i.id), plan = Number(i.planned)
+  const pct = plan > 0 ? Math.round(real / plan * 100) : (real > 0 ? 100 : 0)
+  const over = kind === 'expense' && real > plan && plan > 0
+  const n = S.bentries.filter(e => e.item_id === i.id).length
+  const r = el('div', 'birow' + (over ? ' over' : ''))
+  r.innerHTML = `
+    <div class="bib">
+      <b>${esc(i.title)}</b>
+      <span>${S.budgetView === 'team' ? esc(catName(i.kind, i.category)) : (i.team_id ? esc(teamName(i.team_id)) : 'celý klub')}${i.owner_id ? ' · ' + esc(personName(i.owner_id)) : ''}${n ? ` · ${n}× čerpání` : ''}</span>
+      <div class="bar sm"><i style="width:${Math.min(100, pct)}%;background:${over ? 'var(--red)' : kind === 'income' ? '#1B5FA8' : 'var(--ok)'}"></i></div>
+    </div>
+    <div class="bin">
+      <b>${czk(real)}</b>
+      <span>z ${czk(plan)}${over ? ` · přes o ${czk(real - plan)}` : ''}</span>
+    </div>`
+  r.onclick = () => openBItem(i)
+  return r
+}
+function entriesCard(items) {
+  const ids = new Set(items.map(i => i.id))
+  const list = S.bentries.filter(e => ids.has(e.item_id)).slice(0, 60)
+  const sec = el('section', 'card')
+  sec.appendChild(el('div', 'card-h', `<h3>Poslední čerpání</h3><span class="pill">${list.length}</span>`))
+  if (!list.length) sec.appendChild(el('div', 'empty', 'Zatím nic nečerpáno.'))
+  list.forEach(e => {
+    const it = S.bitems.find(i => i.id === e.item_id)
+    const r = el('div', 'berow')
+    r.innerHTML = `<div class="bed">${fmtDate(e.happened_on)}</div>
+      <div class="beb"><b>${esc(e.title)}</b><span>${esc(it?.title || '')}${e.supplier ? ' · ' + esc(e.supplier) : ''}${e.doc_ref ? ' · ' + esc(e.doc_ref) : ''}</span></div>
+      <div class="bea ${it?.kind === 'income' ? 'in' : ''}">${it?.kind === 'income' ? '+' : '−'}${czk(e.amount)}</div>`
+    if (S.seesAll) r.onclick = () => openBEntry(e)
+    sec.appendChild(r)
+  })
+  return sec
+}
+function openBItem(i) {
+  const isNew = !i
+  const b = budget()
+  if (!S.seesAll) return openBItemRead(i)
+  const kind = i?.kind || 'expense'
+  modal(isNew ? 'Nová rozpočtová položka' : 'Rozpočtová položka', `
+    ${b.locked ? '<p class="ronote">Plán je uzavřený, takže plánované částky nejdou měnit. Odemkni ho tlačítkem nahoře. Čerpání se dá přidávat i tak.</p>' : ''}
+    <div class="row">
+      <label>Typ<select id="bi_k">${[['expense', 'Výdaj'], ['income', 'Příjem']].map(([k, v]) => `<option value="${k}" ${kind === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label>Kategorie<select id="bi_c"></select></label>
+    </div>
+    <label>Název položky<input id="bi_t" value="${esc(i?.title)}" placeholder="Např. Dresy a míče pro mládež"></label>
+    <div class="row">
+      <label>Plánovaná částka (Kč)<input id="bi_p" type="number" min="0" step="100" value="${i?.planned != null ? Number(i.planned) : ''}"></label>
+      <label>Tým / sekce<select id="bi_team">${teamOptions(i?.team_id, '— celý klub —')}</select></label>
+    </div>
+    <label>Kdo má na starost<select id="bi_o"><option value="">— nikdo —</option>${S.people.filter(p => p.approved).map(p => `<option value="${p.id}" ${i?.owner_id === p.id ? 'selected' : ''}>${esc(p.full_name)}</option>`).join('')}</select></label>
+    <label>Poznámka<textarea id="bi_n" rows="2">${esc(i?.note)}</textarea></label>
+    ${isNew ? '' : `<div class="cmts"><h4>Čerpání této položky</h4><div id="bel"></div>
+      <div class="expbar"><button class="btn sm" id="bi_add">+ Přidat čerpání</button></div></div>`}
+  `, [
+    !isNew && { label: 'Smazat', cls: 'danger', act: async () => {
+      if (!confirm('Smazat položku i její čerpání?')) return
+      const { error } = await sb.from('bc_budget_item').delete().eq('id', i.id)
+      if (error) return toast(error.message, true)
+      closeModal(); await loadAll(); render(); toast('Položka smazána')
+    } },
+    { label: 'Uložit', cls: 'primary', act: async () => {
+      const up = {
+        budget_id: b.id, kind: $('#bi_k').value, category: $('#bi_c').value,
+        title: $('#bi_t').value.trim(), planned: Number($('#bi_p').value || 0),
+        team_id: $('#bi_team').value || null, owner_id: $('#bi_o').value || null,
+        note: $('#bi_n').value.trim() || null,
+      }
+      if (!up.title) return toast('Vyplň název položky', true)
+      const q = isNew ? await sb.from('bc_budget_item').insert({ ...up, sort: 100 + bItems().length })
+        : await sb.from('bc_budget_item').update(up).eq('id', i.id)
+      if (q.error) return toast(q.error.message, true)
+      closeModal(); await loadAll(); render(); toast('Uloženo')
+    } },
+  ].filter(Boolean))
+
+  const fillCats = () => {
+    const k = $('#bi_k').value
+    $('#bi_c').innerHTML = Object.entries(catsFor(k)).map(([c, v]) =>
+      `<option value="${c}" ${i?.category === c ? 'selected' : ''}>${v}</option>`).join('')
+  }
+  fillCats(); $('#bi_k').onchange = fillCats
+
+  if (!isNew) {
+    const draw = () => {
+      const list = S.bentries.filter(e => e.item_id === i.id)
+      $('#bel').innerHTML = list.length ? list.map(e =>
+        `<div class="cmt"><b>${esc(e.title)}</b><span>${fmtDate(e.happened_on)} · ${czk(e.amount)}${e.supplier ? ' · ' + esc(e.supplier) : ''}</span></div>`).join('')
+        : '<div class="empty sm">Zatím bez čerpání.</div>'
+    }
+    draw()
+    $('#bi_add').onclick = () => { closeModal(); openBEntry(null, i.id) }
+  }
+}
+function openBItemRead(i) {
+  const real = spent(i.id)
+  const list = S.bentries.filter(e => e.item_id === i.id)
+  modal(i.title, `
+    <p class="stnote">${i.kind === 'income' ? 'Příjmová' : 'Výdajová'} položka · ${esc(catName(i.kind, i.category))}${i.team_id ? ' · ' + esc(teamName(i.team_id)) : ''}</p>
+    <div class="bigsum"><b>${czk(real)}</b><span>z plánovaných ${czk(i.planned)}</span></div>
+    ${i.note ? `<p class="hint">${esc(i.note)}</p>` : ''}
+    <div class="cmts"><h4>Čerpání</h4>
+      ${list.length ? list.map(e => `<div class="cmt"><b>${esc(e.title)}</b><span>${fmtDate(e.happened_on)} · ${czk(e.amount)}${e.supplier ? ' · ' + esc(e.supplier) : ''}</span></div>`).join('') : '<div class="empty sm">Zatím bez čerpání.</div>'}
+    </div>`, [{ label: 'Zavřít', act: closeModal }])
+}
+function openBEntry(e, presetItem) {
+  const isNew = !e
+  const items = bItems()
+  if (!items.length) return toast('Nejdřív založ rozpočtovou položku', true)
+  modal(isNew ? 'Nové čerpání' : 'Čerpání', `
+    <label>Rozpočtová položka<select id="be_i">${items.map(i =>
+      `<option value="${i.id}" ${(e?.item_id || presetItem) === i.id ? 'selected' : ''}>${i.kind === 'income' ? '＋' : '−'} ${esc(i.title)} (${czkShort(i.planned)})</option>`).join('')}</select></label>
+    <label>Popis<input id="be_t" value="${esc(e?.title)}" placeholder="Např. Faktura za dresy U15"></label>
+    <div class="row">
+      <label>Částka (Kč)<input id="be_a" type="number" step="1" value="${e?.amount != null ? Number(e.amount) : ''}"></label>
+      <label>Datum<input id="be_d" type="date" value="${e?.happened_on || today()}"></label>
+    </div>
+    <div class="row">
+      <label>Dodavatel / plátce<input id="be_s" value="${esc(e?.supplier)}" placeholder="Kdo fakturoval nebo poslal"></label>
+      <label>Doklad<input id="be_r" value="${esc(e?.doc_ref)}" placeholder="Číslo faktury, VS"></label>
+    </div>
+    <label>Poznámka<textarea id="be_n" rows="2">${esc(e?.note)}</textarea></label>
+  `, [
+    !isNew && { label: 'Smazat', cls: 'danger', act: async () => {
+      if (!confirm('Smazat toto čerpání?')) return
+      const { error } = await sb.from('bc_budget_entry').delete().eq('id', e.id)
+      if (error) return toast(error.message, true)
+      closeModal(); await loadAll(); render(); toast('Čerpání smazáno')
+    } },
+    { label: 'Uložit', cls: 'primary', act: async () => {
+      const up = {
+        item_id: $('#be_i').value, title: $('#be_t').value.trim(),
+        amount: Number($('#be_a').value || 0), happened_on: $('#be_d').value || today(),
+        supplier: $('#be_s').value.trim() || null, doc_ref: $('#be_r').value.trim() || null,
+        note: $('#be_n').value.trim() || null,
+      }
+      if (!up.title) return toast('Vyplň popis čerpání', true)
+      if (!up.amount) return toast('Vyplň částku', true)
+      const q = isNew ? await sb.from('bc_budget_entry').insert({ ...up, created_by: S.me.id })
+        : await sb.from('bc_budget_entry').update(up).eq('id', e.id)
+      if (q.error) return toast(q.error.message, true)
+      closeModal(); await loadAll(); render(); toast('Uloženo')
+    } },
+  ].filter(Boolean))
 }
 
 /* ============ MARKETING ============ */

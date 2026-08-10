@@ -377,6 +377,9 @@ function viewDash(m) {
   grid.appendChild(c2)
   m.appendChild(grid)
 
+  const bc = dashBudget()
+  if (bc) m.appendChild(bc)
+
   // co jsem zadal a čeká to na ostatní
   const waiting = given.filter(t => !hasAssignee(t, S.me.id))
     .sort((a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999'))
@@ -428,6 +431,50 @@ function viewDash(m) {
 const canEdit = t => !t || !t.created_by || t.created_by === S.me.id || S.me.is_admin
 const prioTag = p => p === 'high' ? '<i class="pr hi" title="Vysoká priorita">Vysoká</i>'
   : p === 'low' ? '<i class="pr lo" title="Nízká priorita">Nízká</i>' : ''
+
+// stav rozpočtu na přehledu — jen z položek, na které má člověk vidět
+function dashBudget() {
+  if (!S.bitems.length) return null
+  const y = new Date().getFullYear()
+  const withItems = S.budgets.filter(b => S.bitems.some(i => i.budget_id === b.id))
+  const b = withItems.find(x => x.year === y) || withItems[0]
+  if (!b) return null
+  const items = S.bitems.filter(i => i.budget_id === b.id)
+  const exp = items.filter(i => i.kind === 'expense')
+  const inc = items.filter(i => i.kind === 'income')
+  const sum = a => ({ plan: a.reduce((s, i) => s + Number(i.planned), 0), real: a.reduce((s, i) => s + spent(i.id), 0) })
+  const E = sum(exp), I = sum(inc)
+  const pct = E.plan > 0 ? Math.round(E.real / E.plan * 100) : 0
+
+  const sec = el('section', 'card')
+  sec.appendChild(el('div', 'card-h', `<h3>Rozpočet ${b.year}</h3><span class="pill">${E.plan > 0 ? `vyčerpáno ${pct} %` : 'zatím bez plánu'}</span>`))
+
+  const line = (label, s, color) => {
+    const p = s.plan > 0 ? Math.round(s.real / s.plan * 100) : 0
+    return el('div', 'prow', `<div class="pn">${label}</div>
+      <div class="bar"><i style="width:${Math.min(100, p)}%;background:${p > 100 ? 'var(--red)' : color}"></i></div>
+      <div class="pv">${czk(s.real)} z ${czk(s.plan)}</div>`)
+  }
+  if (inc.length) sec.appendChild(line('Příjmy', I, '#1B5FA8'))
+  if (exp.length) sec.appendChild(line('Výdaje', E, 'var(--ok)'))
+
+  // položky, které jsou nejdál — přetažené napřed
+  const top = exp.map(i => ({ i, real: spent(i.id), plan: Number(i.planned) }))
+    .filter(x => x.real > 0)
+    .map(x => ({ ...x, p: x.plan > 0 ? x.real / x.plan : 1 }))
+    .sort((a, c) => c.p - a.p).slice(0, 4)
+  if (top.length) {
+    sec.appendChild(el('div', 'mhead', 'Nejvíc vyčerpané položky'))
+    top.forEach(x => sec.appendChild(bItemRow(x.i, 'expense')))
+  } else if (E.plan > 0) {
+    sec.appendChild(el('div', 'empty', 'Plán je hotový, zatím se nic nečerpalo.'))
+  }
+
+  const go = el('div', 'moreline', '<button class="lnk">Otevřít rozpočet</button>')
+  go.querySelector('button').onclick = () => { S.budgetYear = b.year; S.view = 'budget'; render() }
+  sec.appendChild(go)
+  return sec
+}
 
 function taskRow(t, compact) {
   const dl = daysLeft(t.due_date)

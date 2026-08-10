@@ -320,8 +320,8 @@ function viewDash(m) {
     [over.length, 'Po termínu', over.length ? 'red' : '', { status: 'late', who: 'all' }],
     [soon.length, 'Termín do 7 dnů', '', { status: 'open', who: 'all' }],
     [mine.length, 'Moje otevřené úkoly', '', { status: 'open', who: 'mine' }],
-    [given.length, 'Úkoly, které jsem zadal', '', { status: 'open', who: 'created' }],
-    [givenLate.length, 'Ze zadaných po termínu', givenLate.length ? 'red' : '', { status: 'late', who: 'created' }],
+    [given.length, 'Zadal jsem', '', { status: 'open', who: 'created' }],
+    [givenLate.length, 'Zadané po termínu', givenLate.length ? 'red' : '', { status: 'late', who: 'created' }],
   ]
   cards.forEach(([n, l, c, f]) => {
     const card = el('div', 'stat go ' + c, `<b>${n}</b><span>${l}</span>`)

@@ -366,10 +366,10 @@ label small.hint{display:block}
   .head h2{font-size:24px}
   .head p{font-size:12px;flex:1 1 100%;order:3}
   .head .btn{flex:1;min-width:132px}
-  .stats{gap:9px}
-  .stat{padding:12px 13px;border-bottom-width:3px}
-  .stat b{font-size:26px}
-  .stat span{font-size:9.5px;letter-spacing:.07em}
+  .stats{gap:8px}
+  .stat{padding:10px 12px;border-bottom-width:3px;border-radius:9px}
+  .stat b{font-size:23px}
+  .stat span{font-size:9px;letter-spacing:.05em;line-height:1.35}
 
   /* filtry: každý pruh na svém řádku, posouvá se do stran */
   .filters{flex-direction:column;gap:7px}

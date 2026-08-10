@@ -202,7 +202,8 @@ main{max-width:1180px;margin:0 auto;padding:22px 18px 60px}
   .stats,.chips,.teams{grid-template-columns:repeat(2,1fr)}
   .grid2{grid-template-columns:1fr}
   .top{flex-wrap:wrap;height:auto;padding:10px 14px;gap:10px}
-  .nav{order:3;width:100%}
+  .nav{order:3;flex:0 0 100%;width:100%;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+  .nav::-webkit-scrollbar{display:none}
   .pn{width:120px}.pv{width:auto}
   .cd{min-height:70px}
   .mb .row{flex-direction:column;gap:0}
@@ -309,7 +310,6 @@ label small.hint{display:block}
 .post-st.s-psani{background:#F0EAFB;color:#5B3E9E}
 .chks{display:flex;gap:14px;flex-wrap:wrap;margin-top:5px}
 .chkline.inline{display:inline-flex;align-items:center;gap:5px;font-size:13px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink)}
-@media(max-width:640px){.porow{flex-wrap:wrap}.post-st{margin-left:53px}}
 .post-st.go{border:0;cursor:pointer;font-family:'Barlow Condensed','Montserrat',sans-serif}
 .post-st.go:hover{filter:brightness(.94);box-shadow:0 0 0 2px rgba(0,0,0,.07)}
 .stmenu{position:fixed;z-index:80;background:#fff;border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.2);padding:5px;min-width:186px}
@@ -335,3 +335,99 @@ label small.hint{display:block}
 .assgrid .chkline{display:flex;align-items:center;gap:7px;font-size:13px;text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink);padding:3px 0;margin:0;cursor:pointer}
 .assgrid .chkline:hover{color:var(--red)}
 @media(max-width:640px){.assgrid{grid-template-columns:1fr}}
+
+/* ======================= MOBIL ======================= */
+@media(max-width:700px){
+  html,body{font-size:14px}
+  main{padding:14px 12px 48px}
+
+  /* hlavička: značka a účet nahoře, nabídka na vlastním řádku s posunem do stran */
+  .top{padding:8px 12px;gap:8px}
+  .brand img{height:26px}
+  .brand b{font-size:15px}
+  .brand span{font-size:8.5px}
+  .me{margin-left:auto;gap:8px}
+  .nav{order:3;flex:0 0 100%;width:100%;flex-wrap:nowrap;overflow-x:auto;gap:2px;margin:0;padding-bottom:2px;scrollbar-width:none}
+  .nav::-webkit-scrollbar{display:none}
+  .nav button{font-size:13.5px;padding:7px 11px}
+  .who b{font-size:12px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+
+  /* nadpisy a dlaždice */
+  .head{gap:8px;margin-bottom:12px}
+  .head h2{font-size:24px}
+  .head p{font-size:12px;flex:1 1 100%;order:3}
+  .head .btn{flex:1;min-width:132px}
+  .stats{gap:9px}
+  .stat{padding:12px 13px;border-bottom-width:3px}
+  .stat b{font-size:26px}
+  .stat span{font-size:9.5px;letter-spacing:.07em}
+
+  /* filtry: každý pruh na svém řádku, posouvá se do stran */
+  .filters{flex-direction:column;gap:7px}
+  .filters .seg{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;width:100%}
+  .filters .seg::-webkit-scrollbar{display:none}
+  .seg button{white-space:nowrap;padding:9px 12px;font-size:12px}
+  .filters select,.filters input{width:100%;min-width:0;padding:10px 11px}
+
+  /* řádky */
+  .card-h{padding:12px 14px}
+  .card-h h3{font-size:15.5px}
+  .trow,.evrow,.porow,.drow,.prow,.prow2,.nrow{padding-left:14px;padding-right:14px}
+  .trow{gap:11px;padding-top:12px;padding-bottom:12px}
+  .chk{width:26px;height:26px;min-width:26px}
+  .tb b{font-size:13px}
+  .td{font-size:11.5px}
+  .empty{padding:16px 14px}
+
+  /* nejbližší události: čas a tlačítko pod názvem */
+  .evrow{flex-wrap:wrap}
+  .evrow .evb{flex:1 1 60%}
+  .evrow .evt{width:100%;padding-left:55px;margin-top:3px;display:flex;align-items:center;gap:8px}
+  .btn.xs{margin-left:0}
+
+  /* plán příspěvků */
+  .porow{display:grid;grid-template-columns:40px minmax(0,1fr);gap:4px 11px;align-items:start}
+  .porow .pod{grid-row:1/3}
+  .porow .pob{grid-column:2}
+  .porow .post-st{grid-column:2;justify-self:start;margin:0}
+  .rchip{white-space:nowrap}
+  .rubs{padding:10px 14px 12px}
+
+  /* dokumenty */
+  .drow{gap:11px}
+  .dic{width:36px;min-width:36px;height:36px;font-size:11.5px}
+
+  /* dialogy přes celou šířku */
+  .mw{padding:0;align-items:flex-end}
+  .mc{max-width:none;max-height:94vh;border-radius:14px 14px 0 0}
+  .mh{padding:14px 16px}
+  .mh h3{font-size:17px}
+  .mb{padding:15px 16px}
+  .mb input,.mb select,.mb textarea{font-size:16px;padding:11px}
+  .mf{padding:12px 16px;border-radius:0}
+  .mf .btn{flex:1;padding:12px 10px}
+  .assgrid{max-height:38vh}
+  .npanel{top:auto;bottom:0;left:0;right:0;width:auto;max-width:none;border-radius:14px 14px 0 0;max-height:76vh}
+  .nlist{max-height:66vh}
+
+  /* upozornění a stavy se otevírají odspodu */
+  .stmenu{left:12px!important;right:12px;width:auto;min-width:0}
+  .sti{padding:11px 12px;font-size:14px}
+}
+
+/* měsíční mřížka jen tam, kde se na ni vejde místo */
+@media(max-width:700px){
+  .cal,.legend{display:none}
+  .calbar b{font-size:17px;min-width:0;flex:1}
+  .agenda .adh{padding:8px 14px;background:#FAFAFA;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--grey);font-weight:700}
+  .agenda .adh.today{color:var(--red)}
+  .arow{display:flex;gap:11px;align-items:flex-start;padding:11px 14px;border-bottom:1px solid #F4F4F4;cursor:pointer}
+  .arow:last-child{border-bottom:0}
+  .arow .abar{width:4px;align-self:stretch;border-radius:3px;background:var(--ac,#CCC);flex-shrink:0}
+  .arow .ab{flex:1;min-width:0}
+  .arow .ab b{display:block;font-size:13.5px;font-weight:600}
+  .arow .ab span{display:block;font-size:11.5px;color:var(--grey)}
+  .arow .at{font-size:12px;font-weight:700;white-space:nowrap;color:var(--ink)}
+}
+@media(min-width:701px){.agenda{display:none}}
+label small.hint{text-transform:none;letter-spacing:0}

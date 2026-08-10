@@ -956,6 +956,54 @@ function viewCal(m) {
   const leg = el('div', 'legend')
   leg.innerHTML = Object.entries(EVENT_KINDS).map(([k, v]) => `<span class="lg k-${k}">${v}</span>`).join('') + '<span class="lg k-task">Termín úkolu</span>'
   m.appendChild(leg)
+
+  m.appendChild(agendaMonth(c))
+}
+
+// na mobilu je měsíční mřížka nečitelná, proto výpis po dnech
+const KIND_COLOR = { training: '#1B5FA8', match: '#C00000', meeting: '#6A3FA0', deadline: '#C2660A', event: '#0F7C7C', other: '#6B6B6B' }
+function agendaMonth(c) {
+  const wrap = el('section', 'card agenda')
+  const y = c.getFullYear(), mo = c.getMonth()
+  const inMonth = d => { const x = new Date(d); return x.getFullYear() === y && x.getMonth() === mo }
+
+  const items = [
+    ...S.events.filter(e => inMonth(e.starts_at)).map(e => ({
+      key: iso(e.starts_at), time: new Date(e.starts_at),
+      title: e.title, color: KIND_COLOR[e.kind] || '#6B6B6B',
+      meta: [EVENT_KINDS[e.kind], e.team_id ? teamName(e.team_id) : '', e.location].filter(Boolean).join(' · '),
+      at: new Date(e.starts_at).getHours() || new Date(e.starts_at).getMinutes()
+        ? `${new Date(e.starts_at).getHours()}:${String(new Date(e.starts_at).getMinutes()).padStart(2, '0')}` : '',
+      open: () => openEvent(e),
+    })),
+    ...S.tasks.filter(t => t.status !== 'done' && t.due_date && inMonth(t.due_date + 'T00:00:00')).map(t => ({
+      key: t.due_date, time: new Date(t.due_date + 'T23:59:59'),
+      title: t.title, color: '#111',
+      meta: ['Termín úkolu', t.team_id ? teamName(t.team_id) : '', assigneeLabel(t)].filter(Boolean).join(' · '),
+      at: '', open: () => openTask(t),
+    })),
+  ].sort((a, b) => a.time - b.time)
+
+  if (!items.length) {
+    wrap.appendChild(el('div', 'empty', 'V tomto měsíci nic naplánovaného.'))
+    return wrap
+  }
+  let last = null
+  items.forEach(it => {
+    if (it.key !== last) {
+      last = it.key
+      const d = new Date(it.key + 'T00:00:00')
+      wrap.appendChild(el('div', 'adh' + (it.key === today() ? ' today' : ''),
+        `${DAYS[(d.getDay() + 6) % 7]} ${d.getDate()}. ${d.getMonth() + 1}.${it.key === today() ? ' — dnes' : ''}`))
+    }
+    const r = el('div', 'arow', `<div class="abar"></div>
+      <div class="ab"><b>${esc(it.title)}</b><span>${esc(it.meta)}</span></div>
+      ${it.at ? `<div class="at">${it.at}</div>` : ''}`)
+    r.style.setProperty('--ac', it.color)
+    r.onclick = it.open
+    wrap.appendChild(r)
+  })
+  return wrap
 }
 function openEvent(e, presetDate) {
   const isNew = !e

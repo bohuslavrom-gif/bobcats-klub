@@ -12,7 +12,7 @@ const S = {
   filter: { who: 'all', team: '', status: 'open', q: '' },
   docFilter: { team: '', q: '' },
   mktFilter: { status: 'plan', rubric: '' },
-  budgetYear: null, budgetView: 'category',
+  budgetYear: null, budgetView: 'category', budgetTeam: '',
   cal: new Date(),
 }
 
@@ -649,13 +649,22 @@ function viewBudget(m) {
   }
   m.appendChild(h)
 
-  // volba roku
+  // volba roku + týmu
+  const itemsAll = b ? bItems() : []
+  const tOpts = [...new Set(itemsAll.filter(i => i.team_id).map(i => i.team_id))]
+    .map(id => [id, teamName(id)]).sort((a, c) => a[1].localeCompare(c[1], 'cs'))
+  const hasClub = itemsAll.some(i => !i.team_id)
+  if (S.budgetTeam === 'club' ? !hasClub : (S.budgetTeam && !tOpts.some(([id]) => id === S.budgetTeam))) S.budgetTeam = ''
+
   const bar = el('div', 'calbar')
-  bar.innerHTML = `<select id="by">${S.budgets.map(x => `<option value="${x.year}" ${x.year === S.budgetYear ? 'selected' : ''}>Rok ${x.year}${x.locked ? ' — uzavřený' : ''}</option>`).join('')}</select>`
+  bar.innerHTML = `<select id="by">${S.budgets.map(x => `<option value="${x.year}" ${x.year === S.budgetYear ? 'selected' : ''}>Rok ${x.year}${x.locked ? ' — uzavřený' : ''}</option>`).join('')}</select>` +
+    (itemsAll.length ? `<select id="bt"><option value="">Všechny týmy</option>${hasClub ? `<option value="club" ${S.budgetTeam === 'club' ? 'selected' : ''}>Celý klub</option>` : ''}${tOpts.map(([id, n]) => `<option value="${id}" ${S.budgetTeam === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>` : '')
   if (S.seesAll) bar.innerHTML += `<button class="btn ghost sm" id="bnew">+ Nový rok</button>` +
     (b ? `<button class="btn ghost sm" id="block">${b.locked ? 'Odemknout plán' : 'Uzavřít plán'}</button>` : '')
   m.appendChild(bar)
   $('#by', bar).onchange = e => { S.budgetYear = +e.target.value; render() }
+  const bt = $('#bt', bar)
+  if (bt) bt.onchange = e => { S.budgetTeam = e.target.value; render() }
   if (S.seesAll) {
     $('#bnew', bar).onclick = async () => {
       const y = prompt('Rok nového rozpočtu:', new Date().getFullYear() + 1)
@@ -673,8 +682,8 @@ function viewBudget(m) {
 
   if (!b) return m.appendChild(el('section', 'card', '<div class="empty">Zatím není založený žádný rozpočet.</div>'))
 
-  const items = bItems()
-  if (!items.length && !S.seesAll) return m.appendChild(el('section', 'card', '<div class="empty">Pro tvůj tým zatím není nic rozpočtovaného.</div>'))
+  if (!itemsAll.length && !S.seesAll) return m.appendChild(el('section', 'card', '<div class="empty">Pro tvůj tým zatím není nic rozpočtovaného.</div>'))
+  const items = S.budgetTeam ? (S.budgetTeam === 'club' ? itemsAll.filter(i => !i.team_id) : itemsAll.filter(i => i.team_id === S.budgetTeam)) : itemsAll
 
   const inc = items.filter(i => i.kind === 'income')
   const exp = items.filter(i => i.kind === 'expense')
@@ -696,7 +705,7 @@ function viewBudget(m) {
     const pct = Math.min(100, Math.round(SE.real / SE.plan * 100))
     const c = el('section', 'card')
     c.appendChild(el('div', 'card-h', `<h3>Čerpání výdajů</h3><span class="pill">${pct} %</span>`))
-    c.appendChild(el('div', 'prow', `<div class="pn">Celkem za klub</div><div class="bar"><i style="width:${pct}%;background:${pct > 100 ? 'var(--red)' : 'var(--ok)'}"></i></div><div class="pv">${czk(SE.real)} z ${czk(SE.plan)}</div>`))
+    c.appendChild(el('div', 'prow', `<div class="pn">${S.budgetTeam ? (S.budgetTeam === 'club' ? 'Celý klub' : esc(teamName(S.budgetTeam))) : 'Celkem za klub'}</div><div class="bar"><i style="width:${pct}%;background:${pct > 100 ? 'var(--red)' : 'var(--ok)'}"></i></div><div class="pv">${czk(SE.real)} z ${czk(SE.plan)}</div>`))
     m.appendChild(c)
   }
 

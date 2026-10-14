@@ -709,9 +709,11 @@ function viewBudget(m) {
     m.appendChild(c)
   }
 
-  // přepínač pohledu
+  // přepínač pohledu — při vybraném týmu nemá "Po týmech" smysl
+  if (S.budgetTeam && S.budgetView === 'team') S.budgetView = 'category'
+  const views = [['category', 'Po kategoriích'], ...(S.budgetTeam ? [] : [['team', 'Po týmech']]), ['entries', 'Poslední čerpání']]
   const f = el('div', 'filters')
-  f.innerHTML = `<div class="seg" id="bv">${[['category', 'Po kategoriích'], ['team', 'Po týmech'], ['entries', 'Poslední čerpání']].map(([k, l]) => `<button data-k="${k}" class="${S.budgetView === k ? 'on' : ''}">${l}</button>`).join('')}</div>`
+  f.innerHTML = `<div class="seg" id="bv">${views.map(([k, l]) => `<button data-k="${k}" class="${S.budgetView === k ? 'on' : ''}">${l}</button>`).join('')}</div>`
   m.appendChild(f)
   f.querySelectorAll('#bv button').forEach(x => x.onclick = () => { S.budgetView = x.dataset.k; render() })
 

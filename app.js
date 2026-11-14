@@ -1575,16 +1575,19 @@ function viewBrig(m) {
     return
   }
 
-  // filtr akcí
+  // filtr akcí (dlouhodobé pozice stojí mimo filtr)
+  const dated = S.brigEvents.filter(e => !e.longterm)
+  const lt = S.brigEvents.filter(e => e.longterm)
+
   const f = el('div', 'filters')
   f.innerHTML = `<div class="seg" id="bgf">${[['fut', 'Nadcházející'], ['past', 'Skončené'], ['all', 'Vše']].map(([k, l]) => `<button data-k="${k}" class="${S.brigFilter === k ? 'on' : ''}">${l}</button>`).join('')}</div>`
   m.appendChild(f)
   f.querySelectorAll('#bgf button').forEach(x => x.onclick = () => { S.brigFilter = x.dataset.k; render() })
 
-  const shown = S.brigFilter === 'fut' ? S.brigEvents.filter(e => e.happened_on >= t)
-    : S.brigFilter === 'past' ? S.brigEvents.filter(e => e.happened_on < t).slice().reverse()
-    : S.brigEvents.slice().reverse()
-  if (!shown.length) m.appendChild(el('section', 'card', `<div class="empty">${S.brigFilter === 'fut' ? 'Žádná nadcházející akce.' : 'Žádná skončená akce.'}</div>`))
+  const shown = S.brigFilter === 'fut' ? dated.filter(e => e.happened_on >= t)
+    : S.brigFilter === 'past' ? dated.filter(e => e.happened_on < t).slice().reverse()
+    : dated.slice().reverse()
+  if (!shown.length && !lt.length) m.appendChild(el('section', 'card', `<div class="empty">${S.brigFilter === 'fut' ? 'Žádná nadcházející akce.' : 'Žádná skončená akce.'}</div>`))
 
   const evCard = ev => {
     const slots = brigSlotsOf(ev.id)
@@ -1594,9 +1597,9 @@ function viewBrig(m) {
     const isOpen = S.brigOpen.has(ev.id)
     const isFull = slots.length > 0 && !free
     const sec = el('section', 'card brigcard' + (isOpen ? ' open' : ''))
-    const sub = `${x.getFullYear()}${ev.locked ? ' · zápis uzavřen' : ''}${slots.length ? (isFull ? ' · plně obsazeno' : ` · ${free} volných z ${slots.length}`) : ' · bez pozic'}`
+    const sub = `${ev.longterm ? 'dlouhodobá pozice' : x.getFullYear()}${ev.locked ? ' · zápis uzavřen' : ''}${slots.length ? (isFull ? ' · plně obsazeno' : ` · ${free} volných z ${slots.length}`) : ' · bez pozic'}`
     sec.innerHTML = `<button class="evh">
-        <span class="dt${isFull ? ' full' : ''}"><b>${x.getDate()}.</b><small>${MONS[x.getMonth()]}</small></span>
+        <span class="dt${isFull ? ' full' : ''}">${ev.longterm ? '<b>∞</b><small>stálé</small>' : `<b>${x.getDate()}.</b><small>${MONS[x.getMonth()]}</small>`}</span>
         <span class="et"><b>${esc(ev.title)}</b><small>${sub}</small></span>
         <span class="chev">▼</span>
       </button>`
@@ -1616,7 +1619,7 @@ function viewBrig(m) {
       const r = el('div', 'prow2')
       r.innerHTML = `<div><b>${esc(s.position)}${s.units > 1 ? ` · ${s.units} ${s.units < 5 ? 'jednotky' : 'jednotek'}` : ''}</b>
         <span class="${s.person ? 'slottaken' : 'slotfree'}">${s.person ? esc(s.person) : 'volné místo'}</span></div>`
-      const isPast = ev.happened_on < t
+      const isPast = !ev.longterm && ev.happened_on < t
       if (s.person) {
         const un = el('button', 'btn ghost sm', isPast ? 'Nedorazil' : 'Uvolnit')
         un.onclick = async () => {
@@ -1666,6 +1669,11 @@ function viewBrig(m) {
     return sec
   }
 
+  if (lt.length) {
+    m.appendChild(el('div', 'mhead', 'DLOUHODOBÉ POZICE'))
+    lt.forEach(ev => m.appendChild(buildCard(ev)))
+    if (shown.length) m.appendChild(el('div', 'mhead', 'AKCE'))
+  }
   shown.forEach(ev => m.appendChild(buildCard(ev)))
 }
 
@@ -1687,13 +1695,19 @@ function viewBrigSum(m) {
   if (!years.includes(thisYear)) years.unshift(thisYear)
   if (!S.brigYear || !years.includes(S.brigYear)) S.brigYear = years[0]
 
-  const evYear = id => +(S.brigEvents.find(e => e.id === id)?.happened_on || '0').slice(0, 4)
-  const isSpring = id => +(S.brigEvents.find(e => e.id === id)?.happened_on || '').slice(5, 7) <= 6
+  // u dlouhodobých pozic se počítá datum zápisu, u akcí datum akce
+  const slotDate = s => {
+    const ev2 = S.brigEvents.find(e => e.id === s.event_id)
+    if (!ev2) return ''
+    return ev2.longterm ? (s.claimed_at || '').slice(0, 10) : ev2.happened_on
+  }
   const per = {}
-  S.brigSlots.filter(s => s.person && evYear(s.event_id) === S.brigYear).forEach(s => {
+  S.brigSlots.filter(s => s.person).forEach(s => {
+    const d = slotDate(s)
+    if (!d || +d.slice(0, 4) !== S.brigYear) return
     const k = s.person.trim().toLowerCase()
     per[k] = per[k] || { jaro: 0, podzim: 0 }
-    per[k][isSpring(s.event_id) ? 'jaro' : 'podzim'] += s.units
+    per[k][+d.slice(5, 7) <= 6 ? 'jaro' : 'podzim'] += s.units
   })
 
   const cats = [...new Set(S.brigPersons.map(p => (p.category || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'cs'))
@@ -1855,8 +1869,8 @@ function openBrigEvent(ev) {
   const isNew = !ev
   modal(isNew ? 'Nová akce' : 'Upravit akci', `
     ${isNew ? `<div class="row">
-      <label>Typ<select id="be_k"><option value="brigada">Brigáda / pomoc na akci</option><option value="doprava">Doprava na zápas</option><option value="individual">Individuální brigáda</option></select></label>
-      <label>Datum<input id="be_d" type="date" value="${today()}"></label>
+      <label>Typ<select id="be_k"><option value="brigada">Brigáda / pomoc na akci</option><option value="doprava">Doprava na zápas</option><option value="individual">Individuální brigáda</option><option value="longterm">Dlouhodobá pozice (inzerát)</option></select></label>
+      <label id="be_dlab">Datum<input id="be_d" type="date" value="${today()}"></label>
     </div>
     <div id="be_brig">
       <label>Název akce<input id="be_t" placeholder="Např. Turnaj U12 Příbram"></label>
@@ -1866,7 +1880,7 @@ function openBrigEvent(ev) {
         <label>Jednotky za splnění<input id="be_iu" type="number" min="1" max="99" value="1"></label>
         <label>Počet míst<input id="be_in" type="number" min="1" max="20" value="1"></label>
       </div>
-      <p class="hint">Pro větší práce (např. celodenní pomoc) nastav víc jednotek. Místo se zobrazí na veřejné stránce k zápisu jako každá jiná pozice.</p>
+      <p class="hint" id="be_ihint">Pro větší práce (např. celodenní pomoc) nastav víc jednotek. Místo se zobrazí na veřejné stránce k zápisu jako každá jiná pozice.</p>
     </div>
     <div id="be_dop" style="display:none">
       <div class="row">
@@ -1892,7 +1906,8 @@ function openBrigEvent(ev) {
     } },
     { label: 'Uložit', cls: 'primary', act: async () => {
       const isDop = isNew && $('#be_k').value === 'doprava'
-      const isInd = isNew && $('#be_k').value === 'individual'
+      const isInd = isNew && ['individual', 'longterm'].includes($('#be_k').value)
+      const isLt = isNew && $('#be_k').value === 'longterm'
       let title = $('#be_t').value.trim()
       let km = 0, city = ''
       if (isDop) {
@@ -1902,7 +1917,8 @@ function openBrigEvent(ev) {
         if (!km) return toast('Pro tohle město neznám vzdálenost — doplň km ručně', true)
         title = `Doprava — ${city}`
       }
-      const up = { title, happened_on: $('#be_d').value, note: $('#be_n').value.trim() || null }
+      const up = { title, happened_on: isLt ? today() : $('#be_d').value, note: $('#be_n').value.trim() || null }
+      if (isLt) up.longterm = true
       if (!up.title || !up.happened_on) return toast('Vyplň název a datum', true)
       const q = isNew ? await sb.from('bc_brigade_event').insert({ ...up, created_by: S.me.id }).select().single()
         : await sb.from('bc_brigade_event').update(up).eq('id', ev.id)
@@ -1924,6 +1940,7 @@ function openBrigEvent(ev) {
       closeModal(); await loadAll(); render()
       if (isNew && q.data) {
         if (isDop) toast(`Doprava ${city} založena — ${kmToUnits(km)} ${kmToUnits(km) === 1 ? 'jednotka' : 'jednotky'} za řidiče`)
+        else if (isLt) toast('Dlouhodobá pozice vypsána')
         else if (isInd) toast('Individuální brigáda založena')
         else openBrigSlots(q.data)
       }
@@ -1935,8 +1952,12 @@ function openBrigEvent(ev) {
       const k = $('#be_k').value
       $('#be_brig').style.display = k === 'doprava' ? 'none' : ''
       $('#be_dop').style.display = k === 'doprava' ? '' : 'none'
-      $('#be_ind').style.display = k === 'individual' ? '' : 'none'
-      $('#be_t').placeholder = k === 'individual' ? 'Např. Oprava plotu u hřiště' : 'Např. Turnaj U12 Příbram'
+      $('#be_ind').style.display = k === 'individual' || k === 'longterm' ? '' : 'none'
+      $('#be_dlab').style.display = k === 'longterm' ? 'none' : ''
+      $('#be_t').placeholder = k === 'individual' ? 'Např. Oprava plotu u hřiště' : k === 'longterm' ? 'Např. Správa klubového webu' : 'Např. Turnaj U12 Příbram'
+      $('#be_ihint').textContent = k === 'longterm'
+        ? 'Inzerát bez data — visí na veřejné stránce, dokud ho neuzavřeš. Jednotky se započítají do pololetí podle data zápisu.'
+        : 'Pro větší práce (např. celodenní pomoc) nastav víc jednotek. Místo se zobrazí na veřejné stránce k zápisu jako každá jiná pozice.'
     }
     $('#be_k').onchange = sync
     const recalc = () => {

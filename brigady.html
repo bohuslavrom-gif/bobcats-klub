@@ -140,12 +140,13 @@ async function load() {
 
 function render() {
   const t = today()
-  const fut = events.filter(e => e.happened_on >= t)   // řazeno vzestupně podle data
-  if (!fut.length) { $app.innerHTML = '<div class="loading">Teď tu není žádná akce k zápisu.</div>'; return }
+  const lt = events.filter(e => e.longterm)
+  const fut = events.filter(e => !e.longterm && e.happened_on >= t)   // řazeno vzestupně podle data
+  if (!fut.length && !lt.length) { $app.innerHTML = '<div class="loading">Teď tu není žádná akce k zápisu.</div>'; return }
   if (!openSet.size && fut.length) openSet.add(fut[0].id)
   $app.innerHTML = ''
 
-  fut.forEach(e => {
+  const card = e => {
     const list = slots.filter(s => s.event_id === e.id)
     const free = list.filter(s => !s.person).length
     const x = new Date(e.happened_on + 'T00:00:00')
@@ -153,7 +154,7 @@ function render() {
     c.className = 'card' + (openSet.has(e.id) ? ' open' : '')
     const sub = e.locked ? 'zápis uzavřen' : !list.length ? 'pozice se připravují' : free ? `${free} ${free === 1 ? 'volné místo' : free < 5 ? 'volná místa' : 'volných míst'}` : 'obsazeno — díky!'
     c.innerHTML = `<button class="evh">
-        <span class="dt${!e.locked && list.length && !free ? ' full' : ''}"><b>${x.getDate()}.</b><small>${MON[x.getMonth()]}</small></span>
+        <span class="dt${!e.locked && list.length && !free ? ' full' : ''}">${e.longterm ? '<b>∞</b><small>stálé</small>' : `<b>${x.getDate()}.</b><small>${MON[x.getMonth()]}</small>`}</span>
         <span class="et"><b>${esc(e.title)}</b><small class="${!e.locked && list.length && !free ? 'full' : ''}">${sub}</small></span>
         <span class="chev">▼</span>
       </button>
@@ -178,8 +179,25 @@ function render() {
       openSet.has(e.id) ? openSet.delete(e.id) : openSet.add(e.id)
       c.classList.toggle('open')
     }
-    $app.appendChild(c)
-  })
+    return c
+  }
+
+  if (lt.length) {
+    const mh = document.createElement('div')
+    mh.className = 'mhead'
+    mh.textContent = 'Dlouhodobé pozice'
+    $app.appendChild(mh)
+    lt.forEach(e => $app.appendChild(card(e)))
+  }
+  if (fut.length) {
+    if (lt.length) {
+      const mh2 = document.createElement('div')
+      mh2.className = 'mhead'
+      mh2.textContent = 'Akce'
+      $app.appendChild(mh2)
+    }
+    fut.forEach(e => $app.appendChild(card(e)))
+  }
 }
 
 /* ---------- moje plnění ---------- */
@@ -196,11 +214,11 @@ function renderMe() {
   const evOf = id => events.find(e => e.id === id)
   const mine = slots
     .filter(s => s.person && s.person.trim().toLowerCase() === n)
-    .map(s => ({ ...s, ev: evOf(s.event_id) }))
-    .filter(s => s.ev && +s.ev.happened_on.slice(0, 4) === year)
-    .sort((a, b) => a.ev.happened_on < b.ev.happened_on ? -1 : 1)
-  const jaro = mine.filter(s => +s.ev.happened_on.slice(5, 7) <= 6).reduce((x, s) => x + s.units, 0)
-  const podzim = mine.filter(s => +s.ev.happened_on.slice(5, 7) > 6).reduce((x, s) => x + s.units, 0)
+    .map(s => { const ev = evOf(s.event_id); return { ...s, ev, d: ev ? (ev.longterm ? (s.claimed_at || '').slice(0, 10) : ev.happened_on) : '' } })
+    .filter(s => s.ev && s.d && +s.d.slice(0, 4) === year)
+    .sort((a, b) => a.d < b.d ? -1 : 1)
+  const jaro = mine.filter(s => +s.d.slice(5, 7) <= 6).reduce((x, s) => x + s.units, 0)
+  const podzim = mine.filter(s => +s.d.slice(5, 7) > 6).reduce((x, s) => x + s.units, 0)
   const zbyva = Math.max(0, 3 - jaro) + Math.max(0, 3 - podzim)
   meOut.innerHTML = `
     <div class="stats">
@@ -209,9 +227,9 @@ function renderMe() {
       <div class="stat ${zbyva ? 'bad' : 'ok'}"><b>${zbyva}</b><span>zbývá ${year}</span></div>
     </div>
     ${mine.length ? `<div class="mylist">${mine.map(s => `
-      <div class="myrow"><span class="d">${fmtDate(s.ev.happened_on)}</span>
+      <div class="myrow"><span class="d">${s.ev.longterm ? 'stálé' : fmtDate(s.ev.happened_on)}</span>
         <span class="p">${esc(s.ev.title)} — ${esc(s.position)}${s.claimed_at ? `<br><small style="color:var(--grey)">zapsáno ${fmtDT(s.claimed_at)}</small>` : ''}</span>
-        <span class="u ${s.ev.happened_on >= t ? 'plan' : ''}">${s.ev.happened_on >= t ? 'zapsáno' : '+' + s.units}</span></div>`).join('')}</div>`
+        <span class="u ${!s.ev.longterm && s.ev.happened_on >= t ? 'plan' : ''}">${!s.ev.longterm && s.ev.happened_on >= t ? 'zapsáno' : '+' + s.units}</span></div>`).join('')}</div>`
       : '<div class="muted">Pod tímhle jménem zatím žádný zápis v roce ' + year + ' není. Jestli ti nějaký chybí, nahlas to tlačítkem níž.</div>'}`
 }
 document.getElementById('me_go').onclick = () => { try { if (meNm.value.trim()) localStorage.setItem('bc_name', meNm.value.trim()) } catch {}; renderMe() }

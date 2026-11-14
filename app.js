@@ -1851,11 +1851,18 @@ function openBrigEvent(ev) {
   const isNew = !ev
   modal(isNew ? 'Nová akce' : 'Upravit akci', `
     ${isNew ? `<div class="row">
-      <label>Typ<select id="be_k"><option value="brigada">Brigáda / pomoc na akci</option><option value="doprava">Doprava na zápas</option></select></label>
+      <label>Typ<select id="be_k"><option value="brigada">Brigáda / pomoc na akci</option><option value="doprava">Doprava na zápas</option><option value="individual">Individuální brigáda</option></select></label>
       <label>Datum<input id="be_d" type="date" value="${today()}"></label>
     </div>
     <div id="be_brig">
       <label>Název akce<input id="be_t" placeholder="Např. Turnaj U12 Příbram"></label>
+    </div>
+    <div id="be_ind" style="display:none">
+      <div class="row">
+        <label>Jednotky za splnění<select id="be_iu">${[1, 2, 3].map(u => `<option value="${u}">${u}</option>`).join('')}</select></label>
+        <label>Počet míst<input id="be_in" type="number" min="1" max="20" value="1"></label>
+      </div>
+      <p class="hint">Pro větší práce (např. celodenní pomoc) nastav víc jednotek. Místo se zobrazí na veřejné stránce k zápisu jako každá jiná pozice.</p>
     </div>
     <div id="be_dop" style="display:none">
       <div class="row">
@@ -1881,6 +1888,7 @@ function openBrigEvent(ev) {
     } },
     { label: 'Uložit', cls: 'primary', act: async () => {
       const isDop = isNew && $('#be_k').value === 'doprava'
+      const isInd = isNew && $('#be_k').value === 'individual'
       let title = $('#be_t').value.trim()
       let km = 0, city = ''
       if (isDop) {
@@ -1902,9 +1910,17 @@ function openBrigEvent(ev) {
         const { error } = await sb.from('bc_brigade_slot').insert(rows)
         if (error) return toast(error.message, true)
       }
+      if (isInd && q.data) {
+        const units = Math.min(3, Math.max(1, +$('#be_iu').value || 1))
+        const n = Math.min(20, Math.max(1, +$('#be_in').value || 1))
+        const rows = Array.from({ length: n }, (_, i) => ({ event_id: q.data.id, position: title, units, sort: i + 1 }))
+        const { error } = await sb.from('bc_brigade_slot').insert(rows)
+        if (error) return toast(error.message, true)
+      }
       closeModal(); await loadAll(); render()
       if (isNew && q.data) {
         if (isDop) toast(`Doprava ${city} založena — ${kmToUnits(km)} ${kmToUnits(km) === 1 ? 'jednotka' : 'jednotky'} za řidiče`)
+        else if (isInd) toast('Individuální brigáda založena')
         else openBrigSlots(q.data)
       }
     } },
@@ -1912,9 +1928,11 @@ function openBrigEvent(ev) {
 
   if (isNew) {
     const sync = () => {
-      const dop = $('#be_k').value === 'doprava'
-      $('#be_brig').style.display = dop ? 'none' : ''
-      $('#be_dop').style.display = dop ? '' : 'none'
+      const k = $('#be_k').value
+      $('#be_brig').style.display = k === 'doprava' ? 'none' : ''
+      $('#be_dop').style.display = k === 'doprava' ? '' : 'none'
+      $('#be_ind').style.display = k === 'individual' ? '' : 'none'
+      $('#be_t').placeholder = k === 'individual' ? 'Např. Oprava plotu u hřiště' : 'Např. Turnaj U12 Příbram'
     }
     $('#be_k').onchange = sync
     const recalc = () => {

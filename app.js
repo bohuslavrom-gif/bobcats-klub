@@ -1599,7 +1599,7 @@ function viewBrig(m) {
     const sec = el('section', 'card brigcard' + (isOpen ? ' open' : ''))
     const sub = `${ev.longterm ? 'dlouhodobá pozice' : x.getFullYear()}${ev.locked ? ' · zápis uzavřen' : ''}${slots.length ? (isFull ? ' · plně obsazeno' : ` · ${free} volných z ${slots.length}`) : ' · bez pozic'}`
     sec.innerHTML = `<button class="evh">
-        <span class="dt${isFull ? ' full' : ''}">${ev.longterm ? '<b>∞</b><small>stálé</small>' : `<b>${x.getDate()}.</b><small>${MONS[x.getMonth()]}</small>`}</span>
+        <span class="dt${isFull ? ' full' : ''}${ev.longterm ? ' lt' : ''}">${ev.longterm ? '<b>∞</b><small>stálé</small>' : `<b>${x.getDate()}.</b><small>${MONS[x.getMonth()]}</small>`}</span>
         <span class="et"><b>${esc(ev.title)}</b><small>${sub}</small></span>
         <span class="chev">▼</span>
       </button>`

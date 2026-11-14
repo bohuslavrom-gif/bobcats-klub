@@ -28,6 +28,8 @@ body{font-family:'Montserrat',sans-serif;background:var(--bg);color:var(--ink);f
 .dt{flex:0 0 58px;background:var(--ink);color:#fff;border-radius:10px;text-align:center;padding:7px 0 8px;font-family:'Barlow Condensed',sans-serif;line-height:1}
 .dt b{display:block;font-size:26px;font-weight:800}
 .dt small{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#ccc;margin-top:2px}
+.dt.full{background:var(--red)}
+.dt.full small{color:#FBD9D9}
 .et{flex:1;min-width:0}
 .et b{display:block;font-family:'Barlow Condensed',sans-serif;font-size:21px;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .et small{font-size:12px;color:var(--grey);font-weight:600}
@@ -151,7 +153,7 @@ function render() {
     c.className = 'card' + (openSet.has(e.id) ? ' open' : '')
     const sub = e.locked ? 'zápis uzavřen' : !list.length ? 'pozice se připravují' : free ? `${free} ${free === 1 ? 'volné místo' : free < 5 ? 'volná místa' : 'volných míst'}` : 'obsazeno — díky!'
     c.innerHTML = `<button class="evh">
-        <span class="dt"><b>${x.getDate()}.</b><small>${MON[x.getMonth()]}</small></span>
+        <span class="dt${!e.locked && list.length && !free ? ' full' : ''}"><b>${x.getDate()}.</b><small>${MON[x.getMonth()]}</small></span>
         <span class="et"><b>${esc(e.title)}</b><small class="${!e.locked && list.length && !free ? 'full' : ''}">${sub}</small></span>
         <span class="chev">▼</span>
       </button>

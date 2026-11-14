@@ -13,7 +13,7 @@ const S = {
   docFilter: { team: '', q: '' },
   mktFilter: { status: 'plan', rubric: '' },
   budgetYear: null, budgetView: 'category', budgetTeam: '',
-  brigEvents: [], brigSlots: [], brigReports: [], brigYear: null, brigFilter: 'fut', brigOpen: new Set(), brigSumOpen: false,
+  brigEvents: [], brigSlots: [], brigReports: [], brigPersons: [], brigYear: null, brigFilter: 'fut', brigOpen: new Set(),
   cal: new Date(),
 }
 
@@ -94,7 +94,7 @@ const fileIcon = n => {
 
 /* ============ data ============ */
 async function loadAll() {
-  const [pr, tm, tk, ev, cl, ci, ms, nt, dc, pe, ru, po, bu, bi, be, bge, bgs, bgr] = await Promise.all([
+  const [pr, tm, tk, ev, cl, ci, ms, nt, dc, pe, ru, po, bu, bi, be, bge, bgs, bgr, bgp] = await Promise.all([
     sb.from('bc_profile').select('*').order('full_name'),
     sb.from('bc_team').select('*').order('sort'),
     sb.from('bc_task').select('*').order('due_date', { nullsFirst: false }),
@@ -113,8 +113,9 @@ async function loadAll() {
     sb.from('bc_brigade_event').select('*').order('happened_on'),
     sb.from('bc_brigade_slot').select('*').order('sort'),
     sb.from('bc_brigade_report').select('*').order('created_at', { ascending: false }),
+    sb.from('bc_brigade_person').select('*').order('full_name'),
   ])
-  S.brigEvents = bge.data || []; S.brigSlots = bgs.data || []; S.brigReports = bgr.data || []
+  S.brigEvents = bge.data || []; S.brigSlots = bgs.data || []; S.brigReports = bgr.data || []; S.brigPersons = bgp.data || []
   S.budgets = bu.data || []; S.bitems = bi.data || []; S.bentries = be.data || []
   if (!S.budgetYear || !S.budgets.some(b => b.year === S.budgetYear)) S.budgetYear = S.budgets[0]?.year || new Date().getFullYear()
   S.rubrics = ru.data || []; S.posts = po.data || []
@@ -259,7 +260,7 @@ function renderShell() {
   document.body.innerHTML = `
   <header class="top">
     <div class="brand"><img src="./logo-white.png"><div><b>Příbram Bobcats</b><span>Management klubu</span></div></div>
-    <nav class="nav">${NAV.filter(([k]) => k === 'mkt' ? S.isMkt : k === 'budget' ? (S.seesAll || S.bitems.length) : ((k !== 'check' && k !== 'people') || S.seesAll)).map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
+    <nav class="nav">${NAV.filter(([k]) => k === 'mkt' ? S.isMkt : k === 'budget' ? (S.seesAll || S.bitems.length) : ((k !== 'check' && k !== 'people') || S.seesAll)).map(([k, l]) => `<button data-v="${k}" class="${S.view === k || (k === 'brig' && S.view === 'brigsum') ? 'on' : ''}">${l}</button>`).join('')}</nav>
     <div class="me">
       <div class="bell" id="bell" title="Upozornění">
         <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path fill="currentColor" d="M12 22a2.1 2.1 0 0 0 2.1-2.1H9.9A2.1 2.1 0 0 0 12 22Zm6.3-6.3v-5.2c0-3.2-1.7-5.9-4.7-6.6v-.7a1.6 1.6 0 0 0-3.2 0v.7c-3 .7-4.7 3.4-4.7 6.6v5.2L3.6 17.5v.9h16.8v-.9Z"/></svg>
@@ -329,6 +330,7 @@ function render() {
   if (S.view === 'mkt') { if (S.isMkt) viewMkt(m); else { S.view = 'dash'; return render() } }
   if (S.view === 'budget') viewBudget(m)
   if (S.view === 'brig') viewBrig(m)
+  if (S.view === 'brigsum') viewBrigSum(m)
   if (S.view === 'check') { if (S.seesAll) viewCheck(m); else { S.view = 'dash'; return render() } }
   if (S.view === 'people') { if (S.seesAll) viewPeople(m); else { S.view = 'dash'; return render() } }
 }
@@ -1533,6 +1535,8 @@ const brigSlotsOf = id => S.brigSlots.filter(s => s.event_id === id)
 function viewBrig(m) {
   const h = el('div', 'head')
   h.innerHTML = `<h2>Brigády</h2><p>Vypiš akce a pozice — hráči a rodiče se zapisují sami, bez přihlášení.</p>`
+  const su = el('button', 'btn ghost', 'Plnění jednotek')
+  su.onclick = () => { S.view = 'brigsum'; render() }
   const cp = el('button', 'btn ghost', 'Odkaz pro hráče')
   cp.onclick = async () => {
     try { await navigator.clipboard.writeText(BRIG_URL); toast('Odkaz zkopírován do schránky') }
@@ -1540,7 +1544,7 @@ function viewBrig(m) {
   }
   const ab = el('button', 'btn primary', '+ Akce')
   ab.onclick = () => openBrigEvent(null)
-  h.append(cp, ab)
+  h.append(su, cp, ab)
   m.appendChild(h)
 
   const t = today()
@@ -1588,10 +1592,11 @@ function viewBrig(m) {
     const x = new Date(ev.happened_on + 'T00:00:00')
     const MONS = ['led', 'úno', 'bře', 'dub', 'kvě', 'čvn', 'čvc', 'srp', 'zář', 'říj', 'lis', 'pro']
     const isOpen = S.brigOpen.has(ev.id)
+    const isFull = slots.length > 0 && !free
     const sec = el('section', 'card brigcard' + (isOpen ? ' open' : ''))
-    const sub = `${x.getFullYear()}${ev.locked ? ' · zápis uzavřen' : ''}${slots.length ? ` · ${free} volných z ${slots.length}` : ' · bez pozic'}`
+    const sub = `${x.getFullYear()}${ev.locked ? ' · zápis uzavřen' : ''}${slots.length ? (isFull ? ' · plně obsazeno' : ` · ${free} volných z ${slots.length}`) : ' · bez pozic'}`
     sec.innerHTML = `<button class="evh">
-        <span class="dt"><b>${x.getDate()}.</b><small>${MONS[x.getMonth()]}</small></span>
+        <span class="dt${isFull ? ' full' : ''}"><b>${x.getDate()}.</b><small>${MONS[x.getMonth()]}</small></span>
         <span class="et"><b>${esc(ev.title)}</b><small>${sub}</small></span>
         <span class="chev">▼</span>
       </button>`
@@ -1610,7 +1615,7 @@ function viewBrig(m) {
     slots.forEach(s => {
       const r = el('div', 'prow2')
       r.innerHTML = `<div><b>${esc(s.position)}${s.units > 1 ? ` · ${s.units} jednotky` : ''}</b>
-        <span>${s.person ? esc(s.person) : 'volné místo'}</span></div>`
+        <span${s.person ? '' : ' class="slotfree"'}>${s.person ? esc(s.person) : 'volné místo'}</span></div>`
       const isPast = ev.happened_on < t
       if (s.person) {
         const un = el('button', 'btn ghost sm', isPast ? 'Nedorazil' : 'Uvolnit')
@@ -1662,44 +1667,168 @@ function viewBrig(m) {
   }
 
   shown.forEach(ev => m.appendChild(buildCard(ev)))
+}
 
-  // souhrn plnění
+/* ---------- plnění jednotek (samostatná stránka) ---------- */
+function viewBrigSum(m) {
+  const h = el('div', 'head')
+  h.innerHTML = `<h2>Plnění jednotek</h2><p>Kdo má kolik splněno a kolik doplácí. Seznam členů naimportuj z EOS.</p>`
+  const back = el('button', 'btn ghost', '← Brigády'); back.onclick = () => { S.view = 'brig'; render() }
+  const addp = el('button', 'btn ghost', '+ Člen'); addp.onclick = () => openBrigPerson(null)
+  const imp = el('button', 'btn primary', 'Import z XLS')
+  const fi = el('input'); fi.type = 'file'; fi.accept = '.xlsx,.xls,.csv'; fi.style.display = 'none'
+  imp.onclick = () => fi.click()
+  fi.onchange = () => { if (fi.files[0]) brigImport(fi.files[0]) }
+  h.append(back, addp, imp, fi)
+  m.appendChild(h)
+
   const years = [...new Set(S.brigEvents.map(e => +e.happened_on.slice(0, 4)))].sort((a, b) => b - a)
-  if (!years.length) return
+  const thisYear = new Date().getFullYear()
+  if (!years.includes(thisYear)) years.unshift(thisYear)
   if (!S.brigYear || !years.includes(S.brigYear)) S.brigYear = years[0]
+
   const evYear = id => +(S.brigEvents.find(e => e.id === id)?.happened_on || '0').slice(0, 4)
   const isSpring = id => +(S.brigEvents.find(e => e.id === id)?.happened_on || '').slice(5, 7) <= 6
   const per = {}
   S.brigSlots.filter(s => s.person && evYear(s.event_id) === S.brigYear).forEach(s => {
-    const k = s.person.trim()
+    const k = s.person.trim().toLowerCase()
     per[k] = per[k] || { jaro: 0, podzim: 0 }
     per[k][isSpring(s.event_id) ? 'jaro' : 'podzim'] += s.units
   })
-  const names = Object.keys(per).sort((a, b) => a.localeCompare(b, 'cs'))
-  const sum = el('section', 'card brigcard' + (S.brigSumOpen ? ' open' : ''))
-  sum.innerHTML = `<button class="evh">
-      <span class="et"><b>Plnění jednotek</b><small>${names.length} lidí · rok ${S.brigYear}</small></span>
-      <span class="chev">▼</span>
-    </button>`
-  const sb2 = el('div', 'evb')
-  sum.appendChild(sb2)
-  sum.querySelector('.evh').onclick = () => { S.brigSumOpen = !S.brigSumOpen; sum.classList.toggle('open') }
-  if (years.length > 1) {
-    const bar = el('div', 'moreline', `<select id="bgy">${years.map(y => `<option value="${y}" ${y === S.brigYear ? 'selected' : ''}>${y}</option>`).join('')}</select>`)
-    sb2.appendChild(bar)
-    $('#bgy', bar).onchange = e => { S.brigYear = +e.target.value; S.brigSumOpen = true; render() }
+
+  const bar = el('div', 'filters')
+  bar.innerHTML = `<select id="bgy">${years.map(y => `<option value="${y}" ${y === S.brigYear ? 'selected' : ''}>Rok ${y}</option>`).join('')}</select>
+    <input id="bgq" placeholder="Hledat jméno…">`
+  m.appendChild(bar)
+  $('#bgy', bar).onchange = e => { S.brigYear = +e.target.value; render() }
+
+  // řádky: členové ze seznamu + jména zapsaná mimo seznam
+  const listed = new Set(S.brigPersons.map(p => p.full_name.trim().toLowerCase()))
+  const extras = Object.keys(per).filter(k => !listed.has(k))
+  const rows = [
+    ...S.brigPersons.map(p => ({ person: p, name: p.full_name, key: p.full_name.trim().toLowerCase() })),
+    ...extras.map(k => ({ person: null, name: S.brigSlots.find(s => s.person && s.person.trim().toLowerCase() === k)?.person.trim() || k, key: k })),
+  ].sort((a, b) => a.name.localeCompare(b.name, 'cs'))
+
+  const sec = el('section', 'card')
+  const owingTotal = rows.reduce((t2, r) => {
+    const p = per[r.key] || { jaro: 0, podzim: 0 }
+    return t2 + (r.person?.exempt ? 0 : (Math.max(0, 3 - p.jaro) + Math.max(0, 3 - p.podzim)) * 500)
+  }, 0)
+  sec.appendChild(el('div', 'card-h', `<h3>Členové</h3><span class="pill">${rows.length} lidí · doplatky ${czk(owingTotal)}</span>`))
+  if (!rows.length) sec.appendChild(el('div', 'empty', 'Zatím žádní členové — naimportuj seznam z EOS nebo přidej ručně.'))
+  const body = el('div'); sec.appendChild(body)
+
+  const draw = q => {
+    body.innerHTML = ''
+    rows.filter(r => !q || r.name.toLowerCase().includes(q)).forEach(r => {
+      const p = per[r.key] || { jaro: 0, podzim: 0 }
+      const owe = r.person?.exempt ? 0 : (Math.max(0, 3 - p.jaro) + Math.max(0, 3 - p.podzim)) * 500
+      const row = el('div', 'prow2')
+      row.innerHTML = `<div><b>${esc(r.name)}${r.person ? '' : ' <span style="color:var(--grey);font-weight:500">· mimo seznam</span>'}</b>
+        <span>${r.person?.category ? esc(r.person.category) + ' · ' : ''}jaro ${p.jaro} / 3 · podzim ${p.podzim} / 3${r.person?.exempt ? ' · výjimka' + (r.person.note ? ' (' + esc(r.person.note) + ')' : '') : ''}</span></div>
+        <b style="${owe ? 'color:var(--red)' : 'color:var(--ok)'}">${r.person?.exempt ? 'výjimka' : owe ? 'doplatek ' + czk(owe) : 'splněno'}</b>`
+      if (r.person) { row.style.cursor = 'pointer'; row.onclick = () => openBrigPerson(r.person) }
+      else {
+        const ad = el('button', 'btn ghost sm', 'Do seznamu')
+        ad.onclick = async e2 => {
+          e2.stopPropagation()
+          const { error } = await sb.from('bc_brigade_person').insert({ full_name: r.name })
+          if (error) return toast(error.message, true)
+          await loadAll(); render()
+        }
+        row.appendChild(ad)
+      }
+      body.appendChild(row)
+    })
+    if (!body.children.length && rows.length) body.appendChild(el('div', 'empty', 'Nikdo neodpovídá hledání.'))
   }
-  if (!names.length) sb2.appendChild(el('div', 'empty', 'Zatím se nikdo nezapsal.'))
-  names.forEach(n => {
-    const p = per[n]
-    const owe = (Math.max(0, 3 - p.jaro) + Math.max(0, 3 - p.podzim)) * 500
-    const r = el('div', 'prow2')
-    r.innerHTML = `<div><b>${esc(n)}</b><span>jaro ${p.jaro} / 3 · podzim ${p.podzim} / 3</span></div>
-      <b style="${owe ? 'color:var(--red)' : 'color:var(--ok)'}">${owe ? 'doplatek ' + czk(owe) : 'splněno'}</b>`
-    sb2.appendChild(r)
-  })
-  sb2.appendChild(el('div', 'moreline', '<span style="font-size:11.5px;color:var(--grey)">Doplatek = (chybějící jednotky jaro + podzim) × 500 Kč podle směrnice č. 3/2027. Počítá se jen z toho, co je zapsané tady — trenéři a výjimky se řeší mimo.</span>'))
-  m.appendChild(sum)
+  draw('')
+  $('#bgq', bar).oninput = e => draw(e.target.value.trim().toLowerCase())
+
+  sec.appendChild(el('div', 'moreline', '<span style="font-size:11.5px;color:var(--grey)">Doplatek = (chybějící jednotky jaro + podzim) × 500 Kč podle směrnice č. 3/2027. Klikni na člena pro úpravu, výjimku nebo smazání. „Mimo seznam" = jméno zapsané na akci, které není v importovaném seznamu členů.</span>'))
+  m.appendChild(sec)
+}
+
+function openBrigPerson(p) {
+  const isNew = !p
+  modal(isNew ? 'Nový člen' : p.full_name, `
+    <label>Příjmení a jméno<input id="bp_n" value="${esc(p?.full_name)}" placeholder="Novák Jan"></label>
+    <div class="row">
+      <label>Kategorie<input id="bp_c" value="${esc(p?.category)}" placeholder="Např. U15"></label>
+      <label>Výjimka z povinnosti<select id="bp_e"><option value="">Ne</option><option value="1" ${p?.exempt ? 'selected' : ''}>Ano</option></select></label>
+    </div>
+    <label>Poznámka k výjimce<input id="bp_note" value="${esc(p?.note)}" placeholder="Např. trenér U19"></label>
+  `, [
+    !isNew && { label: 'Smazat', cls: 'danger', act: async () => {
+      if (!confirm(`Smazat ${p.full_name} ze seznamu? Zápisy na akcích zůstanou.`)) return
+      const { error } = await sb.from('bc_brigade_person').delete().eq('id', p.id)
+      if (error) return toast(error.message, true)
+      closeModal(); await loadAll(); render()
+    } },
+    { label: 'Uložit', cls: 'primary', act: async () => {
+      const up = { full_name: $('#bp_n').value.trim(), category: $('#bp_c').value.trim() || null, exempt: !!$('#bp_e').value, note: $('#bp_note').value.trim() || null }
+      if (!up.full_name) return toast('Vyplň jméno', true)
+      const q = isNew ? await sb.from('bc_brigade_person').insert(up)
+        : await sb.from('bc_brigade_person').update(up).eq('id', p.id)
+      if (q.error) return toast(q.error.code === '23505' ? 'Tohle jméno už v seznamu je' : q.error.message, true)
+      closeModal(); await loadAll(); render()
+    } },
+  ].filter(Boolean))
+}
+
+async function brigImport(file) {
+  toast('Načítám soubor…')
+  let XLSX
+  try { XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm') }
+  catch { return toast('Nepodařilo se načíst čtečku XLS — zkus to znovu', true) }
+  let rows
+  try {
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' })
+    const ws = wb.Sheets[wb.SheetNames[0]]
+    rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }).map(r => r.map(c => String(c).trim()))
+  } catch { return toast('Soubor se nepodařilo přečíst', true) }
+  rows = rows.filter(r => r.some(c => c))
+  if (!rows.length) return toast('Soubor je prázdný', true)
+
+  // najdi hlavičku a sloupce
+  const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  let hdrIdx = rows.findIndex(r => r.some(c => /prijmen|jmeno|name/.test(norm(c))))
+  let iSur = -1, iFirst = -1, iFull = -1, iCat = -1, start = 0
+  if (hdrIdx >= 0) {
+    const hdr = rows[hdrIdx].map(norm)
+    iSur = hdr.findIndex(c => /prijmen|surname|last/.test(c))
+    iFirst = hdr.findIndex(c => /^(krestni|jmeno|first)/.test(c) || (/jmeno/.test(c) && !/prijmen/.test(c)))
+    if (iSur < 0) iFull = hdr.findIndex(c => /jmeno|name/.test(c))
+    iCat = hdr.findIndex(c => /kategorie|tym|druzstvo|team|oddil/.test(c))
+    start = hdrIdx + 1
+  } else { iSur = 0; iFirst = 1 }
+
+  const people = []
+  for (const r of rows.slice(start)) {
+    let name = ''
+    if (iFull >= 0) name = r[iFull]
+    else if (iSur >= 0 && iFirst >= 0 && (r[iSur] || r[iFirst])) name = `${r[iSur]} ${r[iFirst]}`.trim()
+    else if (iSur >= 0) name = r[iSur]
+    name = name.replace(/\s+/g, ' ').trim()
+    if (!name || name.length < 3) continue
+    people.push({ full_name: name, category: iCat >= 0 ? (r[iCat] || null) : null })
+  }
+  if (!people.length) return toast('V souboru jsem nenašel žádná jména — pošli mi vzor a import doladím', true)
+
+  const existing = new Set(S.brigPersons.map(p => p.full_name.trim().toLowerCase()))
+  const fresh = people.filter(p => !existing.has(p.full_name.toLowerCase()))
+  modal('Import členů', `
+    <p class="stnote">Nalezeno <b>${people.length}</b> jmen, z toho <b>${fresh.length}</b> nových (${people.length - fresh.length} už v seznamu je).</p>
+    <div class="cmts" style="max-height:260px;overflow:auto">${fresh.slice(0, 60).map(p => `<div class="cmt"><b>${esc(p.full_name)}</b>${p.category ? `<span>${esc(p.category)}</span>` : ''}</div>`).join('') || '<div class="empty sm">Nic nového k importu.</div>'}${fresh.length > 60 ? `<div class="cmt"><span>… a dalších ${fresh.length - 60}</span></div>` : ''}</div>
+  `, [
+    { label: 'Zrušit', act: closeModal },
+    fresh.length && { label: `Importovat ${fresh.length}`, cls: 'primary', act: async () => {
+      const { error } = await sb.from('bc_brigade_person').insert(fresh)
+      if (error) return toast(error.message, true)
+      closeModal(); await loadAll(); render(); toast(`Importováno ${fresh.length} členů`)
+    } },
+  ].filter(Boolean))
 }
 
 // orientační silniční vzdálenosti z Příbrami (km) — admin může přepsat ručně

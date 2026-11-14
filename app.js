@@ -1615,7 +1615,7 @@ function viewBrig(m) {
     slots.forEach(s => {
       const r = el('div', 'prow2')
       r.innerHTML = `<div><b>${esc(s.position)}${s.units > 1 ? ` · ${s.units} jednotky` : ''}</b>
-        <span${s.person ? '' : ' class="slotfree"'}>${s.person ? esc(s.person) : 'volné místo'}</span></div>`
+        <span class="${s.person ? 'slottaken' : 'slotfree'}">${s.person ? esc(s.person) : 'volné místo'}</span></div>`
       const isPast = ev.happened_on < t
       if (s.person) {
         const un = el('button', 'btn ghost sm', isPast ? 'Nedorazil' : 'Uvolnit')

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Příbram Bobcats — Brigády</title>
+<meta name="description" content="Zápis na klubové brigády a dopravu na zápasy Příbram Bobcats.">
+<meta name="theme-color" content="#111111">
+<link rel="icon" href="./logo-red.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--red:#C00000;--ink:#161616;--grey:#6B6B6B;--line:#E8E8E8;--ok:#2E7D32;--bg:#F4F3F1}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Montserrat',sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+.top{background:#111;color:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px}
+.top img{width:40px;height:41px}
+.top b{font-family:'Barlow Condensed',sans-serif;font-size:24px;letter-spacing:.05em;text-transform:uppercase}
+.top span{display:block;font-size:11px;color:#bbb;font-weight:500}
+.redbar{height:4px;background:var(--red)}
+.wrap{max-width:720px;margin:0 auto;padding:18px 16px 60px}
+.intro{font-size:13px;color:var(--grey);margin:4px 2px 18px;line-height:1.55}
+.card{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:16px;overflow:hidden}
+.card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.card-h h3{font-family:'Barlow Condensed',sans-serif;font-size:21px;text-transform:uppercase;letter-spacing:.04em}
+.pill{font-size:11px;font-weight:700;background:#F2F2F2;border-radius:99px;padding:4px 10px;color:var(--grey);white-space:nowrap}
+.note{padding:9px 16px;background:#FAFAFA;border-bottom:1px solid var(--line);font-size:12px;color:var(--grey)}
+.slot{display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid #F4F4F4}
+.slot:last-child{border-bottom:0}
+.slot .sb{flex:1;min-width:0}
+.slot b{font-size:13.5px;font-weight:600;display:block}
+.slot small{font-size:11.5px;color:var(--grey)}
+.slot .who{font-size:12.5px;font-weight:600;color:var(--ok);white-space:nowrap}
+.btn{border:0;border-radius:8px;background:var(--red);color:#fff;font-family:'Montserrat',sans-serif;font-weight:700;font-size:12px;padding:8px 14px;cursor:pointer;white-space:nowrap}
+.btn:active{transform:translateY(1px)}
+.muted{font-size:12px;color:var(--grey);padding:13px 16px}
+.mhead{font-size:10.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--grey);font-weight:700;margin:22px 2px 10px}
+.mw{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+.mc{background:#fff;border-radius:14px;width:100%;max-width:420px;padding:18px}
+.mc h3{font-family:'Barlow Condensed',sans-serif;font-size:22px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+.mc p{font-size:12.5px;color:var(--grey);margin-bottom:12px}
+.mc input{width:100%;border:1.5px solid var(--line);border-radius:8px;padding:11px 12px;font-family:'Montserrat',sans-serif;font-size:14px;margin-bottom:12px}
+.mc input:focus{outline:none;border-color:var(--red)}
+.mf{display:flex;gap:10px;justify-content:flex-end}
+.btn.ghost{background:#F2F2F2;color:var(--ink)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:#111;color:#fff;padding:10px 18px;border-radius:99px;font-size:13px;opacity:0;transition:.25s;z-index:20;max-width:92vw;text-align:center}
+.toast.in{opacity:1;transform:translateX(-50%)}
+.toast.bad{background:var(--red)}
+.loading{text-align:center;color:var(--grey);padding:50px 0}
+</style>
+</head>
+<body>
+<div class="top"><img src="./logo-red.png" alt=""><div><b>Příbram Bobcats</b><span>Zápis na brigády a dopravu</span></div></div>
+<div class="redbar"></div>
+<div class="wrap">
+  <p class="intro">Vyber si volnou pozici a zapiš se celým jménem (u mládeže jménem hráče). Jedna pozice = jedna jednotka klubových povinností, doprava na vzdálenější zápasy platí za dvě až tři — viz popis u pozice. Každý člen plní 3 jednotky na jaře a 3 na podzim.</p>
+  <div id="app"><div class="loading">Načítám…</div></div>
+</div>
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/+esm'
+const sb = createClient('https://xrcgxanzbzflvpvmygrd.supabase.co', 'sb_publishable_BfQMClCwUxXF354tkp5F1w_meU8d5u3')
+
+const $app = document.getElementById('app')
+const esc = s => (s ?? '').toString().replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]))
+const fmtDate = d => { const x = new Date(d + 'T00:00:00'); return `${x.getDate()}. ${x.getMonth() + 1}. ${x.getFullYear()}` }
+const today = () => new Date().toISOString().slice(0, 10)
+
+function toast(msg, bad) {
+  const t = document.createElement('div')
+  t.className = 'toast' + (bad ? ' bad' : '')
+  t.textContent = msg
+  document.body.appendChild(t)
+  setTimeout(() => t.classList.add('in'), 10)
+  setTimeout(() => { t.classList.remove('in'); setTimeout(() => t.remove(), 300) }, 3200)
+}
+
+let events = [], slots = []
+
+async function load() {
+  const [ev, sl] = await Promise.all([
+    sb.from('bc_brigade_event').select('*').order('happened_on'),
+    sb.from('bc_brigade_slot').select('*').order('sort'),
+  ])
+  if (ev.error || sl.error) { $app.innerHTML = '<div class="loading">Nepodařilo se načíst data. Zkus obnovit stránku.</div>'; return }
+  events = ev.data || []; slots = sl.data || []
+  render()
+}
+
+function render() {
+  const t = today()
+  const fut = events.filter(e => e.happened_on >= t)
+  const past = events.filter(e => e.happened_on < t).reverse()
+  if (!events.length) { $app.innerHTML = '<div class="loading">Zatím tu nejsou žádné akce.</div>'; return }
+  $app.innerHTML = ''
+
+  const card = (e, old) => {
+    const list = slots.filter(s => s.event_id === e.id)
+    const free = list.filter(s => !s.person).length
+    const c = document.createElement('div')
+    c.className = 'card'
+    const open = !e.locked && !old
+    c.innerHTML = `<div class="card-h"><h3>${esc(e.title)}</h3><span class="pill">${fmtDate(e.happened_on)}${e.locked ? ' · zápis uzavřen' : old ? ' · proběhlo' : ` · ${free} volných`}</span></div>`
+      + (e.note ? `<div class="note">${esc(e.note)}</div>` : '')
+    if (!list.length) c.insertAdjacentHTML('beforeend', '<div class="muted">Pozice zatím nejsou vypsané.</div>')
+    list.forEach(s => {
+      const row = document.createElement('div')
+      row.className = 'slot'
+      row.innerHTML = `<div class="sb"><b>${esc(s.position)}</b>${s.units > 1 ? `<small>${s.units} jednotky</small>` : ''}</div>`
+      if (s.person) row.insertAdjacentHTML('beforeend', `<span class="who">${esc(s.person)}</span>`)
+      else if (open) {
+        const b = document.createElement('button')
+        b.className = 'btn'
+        b.textContent = 'Zapsat se'
+        b.onclick = () => claim(s, e)
+        row.appendChild(b)
+      } else row.insertAdjacentHTML('beforeend', '<span class="who" style="color:var(--grey)">volné</span>')
+      c.appendChild(row)
+    })
+    return c
+  }
+
+  fut.forEach(e => $app.appendChild(card(e, false)))
+  if (past.length) {
+    const mh = document.createElement('div')
+    mh.className = 'mhead'
+    mh.textContent = 'Proběhlé akce'
+    $app.appendChild(mh)
+    past.forEach(e => $app.appendChild(card(e, true)))
+  }
+}
+
+function claim(slot, ev) {
+  const w = document.createElement('div')
+  w.className = 'mw'
+  w.innerHTML = `<div class="mc"><h3>${esc(slot.position)}</h3>
+    <p>${esc(ev.title)} · ${fmtDate(ev.happened_on)}${slot.units > 1 ? ` · počítá se za ${slot.units} jednotky` : ''}</p>
+    <input id="nm" placeholder="Příjmení a jméno" autocomplete="name" maxlength="60">
+    <div class="mf"><button class="btn ghost" id="cn">Zrušit</button><button class="btn" id="ok">Zapsat se</button></div></div>`
+  document.body.appendChild(w)
+  const close = () => w.remove()
+  w.onclick = e => { if (e.target === w) close() }
+  w.querySelector('#cn').onclick = close
+  const inp = w.querySelector('#nm')
+  const prev = localStorage.getItem('bc_name')
+  if (prev) inp.value = prev
+  inp.focus()
+  const go = async () => {
+    const name = inp.value.trim()
+    if (name.length < 5 || !name.includes(' ')) return toast('Napiš prosím celé jméno (příjmení a jméno)', true)
+    const { data, error } = await sb.rpc('bc_claim_slot', { p_slot: slot.id, p_name: name })
+    if (error) { toast(error.message, true); return }
+    close()
+    if (data) { try { localStorage.setItem('bc_name', name) } catch {} ; toast('Zapsáno. Díky, že pomáháš klubu!') }
+    else toast('Tohle místo už mezitím někdo obsadil nebo je zápis uzavřený.', true)
+    await load()
+  }
+  w.querySelector('#ok').onclick = go
+  inp.onkeydown = e => { if (e.key === 'Enter') go() }
+}
+
+load()
+setInterval(() => { if (!document.hidden) load() }, 60000)
+</script>
+</body>
+</html>

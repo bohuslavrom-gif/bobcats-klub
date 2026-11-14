@@ -1614,7 +1614,7 @@ function viewBrig(m) {
     const { sec, body, slots } = evCard(ev)
     slots.forEach(s => {
       const r = el('div', 'prow2')
-      r.innerHTML = `<div><b>${esc(s.position)}${s.units > 1 ? ` · ${s.units} jednotky` : ''}</b>
+      r.innerHTML = `<div><b>${esc(s.position)}${s.units > 1 ? ` · ${s.units} ${s.units < 5 ? 'jednotky' : 'jednotek'}` : ''}</b>
         <span class="${s.person ? 'slottaken' : 'slotfree'}">${s.person ? esc(s.person) : 'volné místo'}</span></div>`
       const isPast = ev.happened_on < t
       if (s.person) {
@@ -1863,7 +1863,7 @@ function openBrigEvent(ev) {
     </div>
     <div id="be_ind" style="display:none">
       <div class="row">
-        <label>Jednotky za splnění<select id="be_iu">${[1, 2, 3].map(u => `<option value="${u}">${u}</option>`).join('')}</select></label>
+        <label>Jednotky za splnění<input id="be_iu" type="number" min="1" max="99" value="1"></label>
         <label>Počet míst<input id="be_in" type="number" min="1" max="20" value="1"></label>
       </div>
       <p class="hint">Pro větší práce (např. celodenní pomoc) nastav víc jednotek. Místo se zobrazí na veřejné stránce k zápisu jako každá jiná pozice.</p>
@@ -1915,7 +1915,7 @@ function openBrigEvent(ev) {
         if (error) return toast(error.message, true)
       }
       if (isInd && q.data) {
-        const units = Math.min(3, Math.max(1, +$('#be_iu').value || 1))
+        const units = Math.min(99, Math.max(1, +$('#be_iu').value || 1))
         const n = Math.min(20, Math.max(1, +$('#be_in').value || 1))
         const rows = Array.from({ length: n }, (_, i) => ({ event_id: q.data.id, position: title, units, sort: i + 1 }))
         const { error } = await sb.from('bc_brigade_slot').insert(rows)
@@ -1983,7 +1983,7 @@ function openBrigSlots(ev) {
   modal(`Přidat pozice — ${ev.title}`, `
     <label>Pozice<input id="bs_p" placeholder="Např. bufet, pořadatel, časomíra, doprava Brno"></label>
     <div class="row">
-      <label>Jednotky za pozici<select id="bs_u">${[1, 2, 3].map(u => `<option value="${u}">${u}${u === 1 ? ' (brigáda, doprava do 100 km)' : u === 2 ? ' (doprava 101–250 km)' : ' (doprava nad 250 km)'}</option>`).join('')}</select></label>
+      <label>Jednotky za pozici<input id="bs_u" type="number" min="1" max="99" value="1"></label>
       <label>Počet míst<input id="bs_n" type="number" min="1" max="20" value="2"></label>
     </div>
     <p class="hint">Každé místo se na veřejné stránce zobrazí jako samostatný řádek, kam se zapíše jeden člověk.</p>

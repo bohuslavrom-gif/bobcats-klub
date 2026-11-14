@@ -163,7 +163,7 @@ function render() {
     list.forEach(s => {
       const row = document.createElement('div')
       row.className = 'slot'
-      row.innerHTML = `<div class="sb"><b>${esc(s.position)}</b>${s.units > 1 ? `<small>${s.units} jednotky</small>` : ''}</div>`
+      row.innerHTML = `<div class="sb"><b>${esc(s.position)}</b>${s.units > 1 ? `<small>${s.units} ${s.units < 5 ? 'jednotky' : 'jednotek'}</small>` : ''}</div>`
       if (s.person) row.insertAdjacentHTML('beforeend', `<span class="who">${esc(s.person)}</span>`)
       else if (!e.locked) {
         const b = document.createElement('button')
@@ -252,7 +252,7 @@ function claim(slot, ev) {
   const w = document.createElement('div')
   w.className = 'mw'
   w.innerHTML = `<div class="mc"><h3>${esc(slot.position)}</h3>
-    <p>${esc(ev.title)} · ${fmtDate(ev.happened_on)}${slot.units > 1 ? ` · počítá se za ${slot.units} jednotky` : ''}</p>
+    <p>${esc(ev.title)} · ${fmtDate(ev.happened_on)}${slot.units > 1 ? ` · počítá se za ${slot.units} ${slot.units < 5 ? 'jednotky' : 'jednotek'}` : ''}</p>
     <input id="nm" placeholder="Příjmení a jméno" autocomplete="name" maxlength="60">
     <div class="mf"><button class="btn ghost" id="cn">Zrušit</button><button class="btn" id="ok">Zapsat se</button></div></div>`
   document.body.appendChild(w)

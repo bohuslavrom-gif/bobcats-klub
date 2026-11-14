@@ -13,7 +13,7 @@ const S = {
   docFilter: { team: '', q: '' },
   mktFilter: { status: 'plan', rubric: '' },
   budgetYear: null, budgetView: 'category', budgetTeam: '',
-  brigEvents: [], brigSlots: [], brigReports: [], brigPersons: [], brigYear: null, brigFilter: 'fut', brigOpen: new Set(),
+  brigEvents: [], brigSlots: [], brigReports: [], brigPersons: [], brigYear: null, brigFilter: 'fut', brigCat: '', brigOpen: new Set(),
   cal: new Date(),
 }
 
@@ -1696,19 +1696,23 @@ function viewBrigSum(m) {
     per[k][isSpring(s.event_id) ? 'jaro' : 'podzim'] += s.units
   })
 
+  const cats = [...new Set(S.brigPersons.map(p => (p.category || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'cs'))
   const bar = el('div', 'filters')
   bar.innerHTML = `<select id="bgy">${years.map(y => `<option value="${y}" ${y === S.brigYear ? 'selected' : ''}>Rok ${y}</option>`).join('')}</select>
+    <select id="bgt"><option value="">Všechny týmy</option>${cats.map(c => `<option value="${esc(c)}" ${S.brigCat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
     <input id="bgq" placeholder="Hledat jméno…">`
   m.appendChild(bar)
   $('#bgy', bar).onchange = e => { S.brigYear = +e.target.value; render() }
+  $('#bgt', bar).onchange = e => { S.brigCat = e.target.value; render() }
 
   // řádky: členové ze seznamu + jména zapsaná mimo seznam
   const listed = new Set(S.brigPersons.map(p => p.full_name.trim().toLowerCase()))
   const extras = Object.keys(per).filter(k => !listed.has(k))
-  const rows = [
+  const rowsAll = [
     ...S.brigPersons.map(p => ({ person: p, name: p.full_name, key: p.full_name.trim().toLowerCase() })),
     ...extras.map(k => ({ person: null, name: S.brigSlots.find(s => s.person && s.person.trim().toLowerCase() === k)?.person.trim() || k, key: k })),
   ].sort((a, b) => a.name.localeCompare(b.name, 'cs'))
+  const rows = S.brigCat ? rowsAll.filter(r => (r.person?.category || '').trim() === S.brigCat) : rowsAll
 
   const sec = el('section', 'card')
   const owingTotal = rows.reduce((t2, r) => {

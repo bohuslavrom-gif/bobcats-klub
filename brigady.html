@@ -49,6 +49,7 @@ body{font-family:'Montserrat',sans-serif;background:var(--bg);color:var(--ink);f
 .muted{font-size:12px;color:var(--grey);padding:13px 16px}
 .loading{text-align:center;color:var(--grey);padding:50px 0}
 /* moje plnění */
+.me .evh{padding:12px 16px}
 .me .mebar{display:flex;gap:10px;padding:14px 16px}
 .me input{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;font-family:'Montserrat',sans-serif;font-size:14px}
 .me input:focus{outline:none;border-color:var(--red)}
@@ -71,8 +72,8 @@ body{font-family:'Montserrat',sans-serif;background:var(--bg);color:var(--ink);f
 .mc{background:#fff;border-radius:14px;width:100%;max-width:420px;padding:18px}
 .mc h3{font-family:'Barlow Condensed',sans-serif;font-size:22px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
 .mc p{font-size:12.5px;color:var(--grey);margin-bottom:12px}
-.mc input{width:100%;border:1.5px solid var(--line);border-radius:8px;padding:11px 12px;font-family:'Montserrat',sans-serif;font-size:14px;margin-bottom:12px}
-.mc input:focus{outline:none;border-color:var(--red)}
+.mc input,.mc textarea{width:100%;border:1.5px solid var(--line);border-radius:8px;padding:11px 12px;font-family:'Montserrat',sans-serif;font-size:14px;margin-bottom:12px;resize:vertical}
+.mc input:focus,.mc textarea:focus{outline:none;border-color:var(--red)}
 .mf{display:flex;gap:10px;justify-content:flex-end}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:#111;color:#fff;padding:10px 18px;border-radius:99px;font-size:13px;opacity:0;transition:.25s;z-index:20;max-width:92vw;text-align:center}
 .toast.in{opacity:1;transform:translateX(-50%)}
@@ -86,10 +87,16 @@ body{font-family:'Montserrat',sans-serif;background:var(--bg);color:var(--ink);f
 <div class="wrap">
   <p class="intro">Klikni na akci, vyber volnou pozici a zapiš se celým jménem (u mládeže jménem hráče). Jedna pozice = jedna jednotka klubových povinností; doprava na vzdálenější zápasy platí za dvě až tři. Každý člen plní 3 jednotky na jaře a 3 na podzim.</p>
 
-  <div class="card me">
-    <h3>Moje plnění</h3>
-    <div class="mebar"><input id="me_nm" placeholder="Příjmení a jméno" autocomplete="name" maxlength="60"><button class="btn" id="me_go">Zobrazit</button></div>
-    <div id="me_out"></div>
+  <div class="card me" id="me_card">
+    <button class="evh">
+      <span class="et"><b style="font-family:'Barlow Condensed',sans-serif;font-size:21px;text-transform:uppercase;letter-spacing:.03em">Moje plnění</b><small>zkontroluj si, co máš splněno a co zbývá</small></span>
+      <span class="chev">▼</span>
+    </button>
+    <div class="evb">
+      <div class="mebar"><input id="me_nm" placeholder="Příjmení a jméno" autocomplete="name" maxlength="60"><button class="btn" id="me_go">Zobrazit</button></div>
+      <div id="me_out"></div>
+      <div class="muted" style="display:flex;justify-content:flex-end"><button class="btn ghost" id="me_rep">Nahlásit chybějící zápis</button></div>
+    </div>
   </div>
 
   <div class="mhead">Nadcházející akce</div>
@@ -103,6 +110,7 @@ const $app = document.getElementById('app')
 const esc = s => (s ?? '').toString().replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]))
 const MON = ['led', 'úno', 'bře', 'dub', 'kvě', 'čvn', 'čvc', 'srp', 'zář', 'říj', 'lis', 'pro']
 const fmtDate = d => { const x = new Date(d + 'T00:00:00'); return `${x.getDate()}. ${x.getMonth() + 1}. ${x.getFullYear()}` }
+const fmtDT = d => { const x = new Date(d); return `${x.getDate()}. ${x.getMonth() + 1}. ${x.getFullYear()} ${x.getHours()}:${String(x.getMinutes()).padStart(2, '0')}` }
 const today = () => new Date().toISOString().slice(0, 10)
 const openSet = new Set()
 
@@ -200,12 +208,42 @@ function renderMe() {
     </div>
     ${mine.length ? `<div class="mylist">${mine.map(s => `
       <div class="myrow"><span class="d">${fmtDate(s.ev.happened_on)}</span>
-        <span class="p">${esc(s.ev.title)} — ${esc(s.position)}</span>
+        <span class="p">${esc(s.ev.title)} — ${esc(s.position)}${s.claimed_at ? `<br><small style="color:var(--grey)">zapsáno ${fmtDT(s.claimed_at)}</small>` : ''}</span>
         <span class="u ${s.ev.happened_on >= t ? 'plan' : ''}">${s.ev.happened_on >= t ? 'zapsáno' : '+' + s.units}</span></div>`).join('')}</div>`
-      : '<div class="muted">Pod tímhle jménem zatím žádný zápis v roce ' + year + ' není.</div>'}`
+      : '<div class="muted">Pod tímhle jménem zatím žádný zápis v roce ' + year + ' není. Jestli ti nějaký chybí, nahlas to tlačítkem níž.</div>'}`
 }
 document.getElementById('me_go').onclick = () => { try { if (meNm.value.trim()) localStorage.setItem('bc_name', meNm.value.trim()) } catch {}; renderMe() }
 meNm.onkeydown = e => { if (e.key === 'Enter') document.getElementById('me_go').click() }
+
+const meCard = document.getElementById('me_card')
+meCard.querySelector('.evh').onclick = () => meCard.classList.toggle('open')
+
+document.getElementById('me_rep').onclick = () => {
+  const w = document.createElement('div')
+  w.className = 'mw'
+  w.innerHTML = `<div class="mc"><h3>Chybějící zápis</h3>
+    <p>Napiš, co ti v přehledu chybí — kdy, jaká akce a co jsi dělal(a). Vedení klubu to dostane jako upozornění a zápis doplní.</p>
+    <input id="rp_nm" placeholder="Příjmení a jméno" maxlength="60">
+    <textarea id="rp_msg" rows="4" placeholder="Např. 17. 4. turnaj U12 — dělal jsem časomíru, ale v přehledu to nevidím." maxlength="500"></textarea>
+    <div class="mf"><button class="btn ghost" id="rp_cn">Zrušit</button><button class="btn" id="rp_ok">Odeslat</button></div></div>`
+  document.body.appendChild(w)
+  const close = () => w.remove()
+  w.onclick = e => { if (e.target === w) close() }
+  w.querySelector('#rp_cn').onclick = close
+  const nm = w.querySelector('#rp_nm')
+  nm.value = meNm.value.trim()
+  try { if (!nm.value) nm.value = localStorage.getItem('bc_name') || '' } catch {}
+  w.querySelector('#rp_ok').onclick = async () => {
+    const name = nm.value.trim()
+    const msg = w.querySelector('#rp_msg').value.trim()
+    if (name.length < 5 || !name.includes(' ')) return toast('Napiš prosím celé jméno', true)
+    if (msg.length < 10) return toast('Popiš prosím, co ti chybí (kdy a jaká akce)', true)
+    const { data, error } = await sb.rpc('bc_brigade_report_add', { p_name: name, p_message: msg })
+    if (error || !data) return toast('Odeslání se nepovedlo, zkus to znovu.', true)
+    close()
+    toast('Odesláno. Vedení klubu zápis zkontroluje a doplní.')
+  }
+}
 
 /* ---------- zápis ---------- */
 function claim(slot, ev) {

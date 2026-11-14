@@ -13,7 +13,7 @@ const S = {
   docFilter: { team: '', q: '' },
   mktFilter: { status: 'plan', rubric: '' },
   budgetYear: null, budgetView: 'category', budgetTeam: '',
-  brigEvents: [], brigSlots: [], brigYear: null,
+  brigEvents: [], brigSlots: [], brigReports: [], brigYear: null, brigFilter: 'fut', brigOpen: new Set(), brigSumOpen: false,
   cal: new Date(),
 }
 
@@ -94,7 +94,7 @@ const fileIcon = n => {
 
 /* ============ data ============ */
 async function loadAll() {
-  const [pr, tm, tk, ev, cl, ci, ms, nt, dc, pe, ru, po, bu, bi, be, bge, bgs] = await Promise.all([
+  const [pr, tm, tk, ev, cl, ci, ms, nt, dc, pe, ru, po, bu, bi, be, bge, bgs, bgr] = await Promise.all([
     sb.from('bc_profile').select('*').order('full_name'),
     sb.from('bc_team').select('*').order('sort'),
     sb.from('bc_task').select('*').order('due_date', { nullsFirst: false }),
@@ -112,8 +112,9 @@ async function loadAll() {
     sb.from('bc_budget_entry').select('*').order('happened_on', { ascending: false }),
     sb.from('bc_brigade_event').select('*').order('happened_on'),
     sb.from('bc_brigade_slot').select('*').order('sort'),
+    sb.from('bc_brigade_report').select('*').order('created_at', { ascending: false }),
   ])
-  S.brigEvents = bge.data || []; S.brigSlots = bgs.data || []
+  S.brigEvents = bge.data || []; S.brigSlots = bgs.data || []; S.brigReports = bgr.data || []
   S.budgets = bu.data || []; S.bitems = bi.data || []; S.bentries = be.data || []
   if (!S.budgetYear || !S.budgets.some(b => b.year === S.budgetYear)) S.budgetYear = S.budgets[0]?.year || new Date().getFullYear()
   S.rubrics = ru.data || []; S.posts = po.data || []
@@ -284,6 +285,7 @@ async function refreshNotes(rerender) {
 }
 function noteText(n) {
   const who = personName(n.actor_id) || 'Někdo'
+  if (n.kind === 'brigade') return `<b>${esc(n.task_title)}</b> hlásí chybějící zápis z brigády${n.body ? `<span class="q">„${esc(n.body)}"</span>` : ''}`
   if (n.kind === 'assigned') return `<b>${esc(who)}</b> ti přidělil úkol <em>${esc(n.task_title)}</em>`
   return `<b>${esc(who)}</b> okomentoval úkol <em>${esc(n.task_title)}</em>${n.body ? `<span class="q">„${esc(n.body)}"</span>` : ''}`
 }
@@ -300,6 +302,7 @@ function toggleNotes() {
     r.onclick = async () => {
       p.remove()
       if (!n.read_at) { await sb.from('bc_notification').update({ read_at: new Date().toISOString() }).eq('id', n.id); await refreshNotes() }
+      if (n.kind === 'brigade') { S.view = 'brig'; return render() }
       const t = S.tasks.find(x => x.id === n.task_id)
       if (t) { S.view = 'tasks'; render(); openTask(t) }
       else { render(); toast('Úkol už není dostupný', true) }
@@ -1540,22 +1543,70 @@ function viewBrig(m) {
   h.append(cp, ab)
   m.appendChild(h)
 
+  const t = today()
+
+  // hlášení od členů (reklamace zápisů)
+  const open_reports = S.brigReports.filter(r => !r.resolved)
+  if (open_reports.length) {
+    const rc = el('section', 'card')
+    rc.appendChild(el('div', 'card-h', `<h3>Hlášení od členů</h3><span class="pill">${open_reports.length} nevyřízených</span>`))
+    open_reports.forEach(r => {
+      const row = el('div', 'prow2')
+      row.innerHTML = `<div><b>${esc(r.name)}</b><span class="repmsg">${esc(r.message)}</span><span>${fmtDateTime(r.created_at)}</span></div>`
+      const ok = el('button', 'btn ghost sm', 'Vyřízeno')
+      ok.onclick = async () => {
+        const { error } = await sb.from('bc_brigade_report').update({ resolved: true }).eq('id', r.id)
+        if (error) return toast(error.message, true)
+        await loadAll(); render()
+      }
+      row.appendChild(ok)
+      rc.appendChild(row)
+    })
+    rc.appendChild(el('div', 'moreline', '<span style="font-size:11.5px;color:var(--grey)">Hlášení vyřídíš tak, že zápis doplníš ručně na příslušné akci (tlačítko Zapsat) a pak dáš Vyřízeno.</span>'))
+    m.appendChild(rc)
+  }
+
   if (!S.brigEvents.length) {
     m.appendChild(el('section', 'card', '<div class="empty">Zatím žádná akce. Založ první tlačítkem + Akce.</div>'))
     return
   }
 
-  const t = today()
-  const fut = S.brigEvents.filter(e => e.happened_on >= t)
-  const past = S.brigEvents.filter(e => e.happened_on < t).slice().reverse()
+  // filtr akcí
+  const f = el('div', 'filters')
+  f.innerHTML = `<div class="seg" id="bgf">${[['fut', 'Nadcházející'], ['past', 'Skončené'], ['all', 'Vše']].map(([k, l]) => `<button data-k="${k}" class="${S.brigFilter === k ? 'on' : ''}">${l}</button>`).join('')}</div>`
+  m.appendChild(f)
+  f.querySelectorAll('#bgf button').forEach(x => x.onclick = () => { S.brigFilter = x.dataset.k; render() })
+
+  const shown = S.brigFilter === 'fut' ? S.brigEvents.filter(e => e.happened_on >= t)
+    : S.brigFilter === 'past' ? S.brigEvents.filter(e => e.happened_on < t).slice().reverse()
+    : S.brigEvents.slice().reverse()
+  if (!shown.length) m.appendChild(el('section', 'card', `<div class="empty">${S.brigFilter === 'fut' ? 'Žádná nadcházející akce.' : 'Žádná skončená akce.'}</div>`))
 
   const evCard = ev => {
     const slots = brigSlotsOf(ev.id)
     const free = slots.filter(s => !s.person).length
-    const sec = el('section', 'card')
-    sec.appendChild(el('div', 'card-h', `<h3>${esc(ev.title)}</h3><span class="pill">${fmtDate(ev.happened_on)}${ev.locked ? ' · uzavřená' : slots.length ? ` · ${free} volných z ${slots.length}` : ''}</span>`))
-    if (ev.note) sec.appendChild(el('div', 'mhead', esc(ev.note)))
-    if (!slots.length) sec.appendChild(el('div', 'empty', 'Zatím bez pozic — přidej je tlačítkem níž.'))
+    const x = new Date(ev.happened_on + 'T00:00:00')
+    const MONS = ['led', 'úno', 'bře', 'dub', 'kvě', 'čvn', 'čvc', 'srp', 'zář', 'říj', 'lis', 'pro']
+    const isOpen = S.brigOpen.has(ev.id)
+    const sec = el('section', 'card brigcard' + (isOpen ? ' open' : ''))
+    const sub = `${x.getFullYear()}${ev.locked ? ' · zápis uzavřen' : ''}${slots.length ? ` · ${free} volných z ${slots.length}` : ' · bez pozic'}`
+    sec.innerHTML = `<button class="evh">
+        <span class="dt"><b>${x.getDate()}.</b><small>${MONS[x.getMonth()]}</small></span>
+        <span class="et"><b>${esc(ev.title)}</b><small>${sub}</small></span>
+        <span class="chev">▼</span>
+      </button>`
+    const body = el('div', 'evb')
+    sec.appendChild(body)
+    sec.querySelector('.evh').onclick = () => {
+      S.brigOpen.has(ev.id) ? S.brigOpen.delete(ev.id) : S.brigOpen.add(ev.id)
+      sec.classList.toggle('open')
+    }
+    if (ev.note) body.appendChild(el('div', 'mhead', esc(ev.note)))
+    if (!slots.length) body.appendChild(el('div', 'empty', 'Zatím bez pozic — přidej je tlačítkem níž.'))
+    return { sec, body, slots }
+  }
+  const buildCard = ev => {
+    const { sec, body, slots } = evCard(ev)
     slots.forEach(s => {
       const r = el('div', 'prow2')
       r.innerHTML = `<div><b>${esc(s.position)}${s.units > 1 ? ` · ${s.units} jednotky` : ''}</b>
@@ -1592,7 +1643,7 @@ function viewBrig(m) {
         await loadAll(); render()
       }
       r.appendChild(dl)
-      sec.appendChild(r)
+      body.appendChild(r)
     })
     const ml = el('div', 'moreline')
     const ap = el('button', 'lnk', '+ Pozice'); ap.onclick = () => openBrigSlots(ev)
@@ -1606,15 +1657,11 @@ function viewBrig(m) {
     const edb = el('button', 'lnk', 'Upravit'); edb.style.marginLeft = '14px'; edb.onclick = () => openBrigEvent(ev)
     const cpb = el('button', 'lnk', 'Kopírovat'); cpb.style.marginLeft = '14px'; cpb.onclick = () => openBrigCopy(ev)
     ml.append(ap, lk, edb, cpb)
-    sec.appendChild(ml)
+    body.appendChild(ml)
     return sec
   }
 
-  fut.forEach(ev => m.appendChild(evCard(ev)))
-  if (past.length) {
-    m.appendChild(el('div', 'mhead', 'PROBĚHLÉ AKCE'))
-    past.forEach(ev => m.appendChild(evCard(ev)))
-  }
+  shown.forEach(ev => m.appendChild(buildCard(ev)))
 
   // souhrn plnění
   const years = [...new Set(S.brigEvents.map(e => +e.happened_on.slice(0, 4)))].sort((a, b) => b - a)
@@ -1629,24 +1676,29 @@ function viewBrig(m) {
     per[k][isSpring(s.event_id) ? 'jaro' : 'podzim'] += s.units
   })
   const names = Object.keys(per).sort((a, b) => a.localeCompare(b, 'cs'))
-  const sum = el('section', 'card')
-  const ysel = years.length > 1 ? `<select id="bgy">${years.map(y => `<option value="${y}" ${y === S.brigYear ? 'selected' : ''}>${y}</option>`).join('')}</select>` : String(S.brigYear)
-  sum.appendChild(el('div', 'card-h', `<h3>Plnění jednotek</h3><span class="pill">${names.length} lidí · rok ${S.brigYear}</span>`))
+  const sum = el('section', 'card brigcard' + (S.brigSumOpen ? ' open' : ''))
+  sum.innerHTML = `<button class="evh">
+      <span class="et"><b>Plnění jednotek</b><small>${names.length} lidí · rok ${S.brigYear}</small></span>
+      <span class="chev">▼</span>
+    </button>`
+  const sb2 = el('div', 'evb')
+  sum.appendChild(sb2)
+  sum.querySelector('.evh').onclick = () => { S.brigSumOpen = !S.brigSumOpen; sum.classList.toggle('open') }
   if (years.length > 1) {
-    const bar = el('div', 'moreline', ysel)
-    sum.appendChild(bar)
-    $('#bgy', bar).onchange = e => { S.brigYear = +e.target.value; render() }
+    const bar = el('div', 'moreline', `<select id="bgy">${years.map(y => `<option value="${y}" ${y === S.brigYear ? 'selected' : ''}>${y}</option>`).join('')}</select>`)
+    sb2.appendChild(bar)
+    $('#bgy', bar).onchange = e => { S.brigYear = +e.target.value; S.brigSumOpen = true; render() }
   }
-  if (!names.length) sum.appendChild(el('div', 'empty', 'Zatím se nikdo nezapsal.'))
+  if (!names.length) sb2.appendChild(el('div', 'empty', 'Zatím se nikdo nezapsal.'))
   names.forEach(n => {
     const p = per[n]
     const owe = (Math.max(0, 3 - p.jaro) + Math.max(0, 3 - p.podzim)) * 500
     const r = el('div', 'prow2')
     r.innerHTML = `<div><b>${esc(n)}</b><span>jaro ${p.jaro} / 3 · podzim ${p.podzim} / 3</span></div>
       <b style="${owe ? 'color:var(--red)' : 'color:var(--ok)'}">${owe ? 'doplatek ' + czk(owe) : 'splněno'}</b>`
-    sum.appendChild(r)
+    sb2.appendChild(r)
   })
-  sum.appendChild(el('div', 'moreline', '<span style="font-size:11.5px;color:var(--grey)">Doplatek = (chybějící jednotky jaro + podzim) × 500 Kč podle směrnice č. 3/2027. Počítá se jen z toho, co je zapsané tady — trenéři a výjimky se řeší mimo.</span>'))
+  sb2.appendChild(el('div', 'moreline', '<span style="font-size:11.5px;color:var(--grey)">Doplatek = (chybějící jednotky jaro + podzim) × 500 Kč podle směrnice č. 3/2027. Počítá se jen z toho, co je zapsané tady — trenéři a výjimky se řeší mimo.</span>'))
   m.appendChild(sum)
 }
 

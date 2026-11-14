@@ -1534,7 +1534,7 @@ const brigSlotsOf = id => S.brigSlots.filter(s => s.event_id === id)
 
 function viewBrig(m) {
   const h = el('div', 'head')
-  h.innerHTML = `<h2>Brigády</h2><p>Vypiš akce a pozice — hráči a rodiče se zapisují sami, bez přihlášení.</p>`
+  h.innerHTML = `<h2>Brigády</h2><p>Vypiš akce a pozice — hráči a rodiče se zapisují sami, bez přihlášení. <a href="./smernice-3-2027.pdf" target="_blank" style="color:var(--red)">Směrnice č. 3/2027</a></p>`
   const su = el('button', 'btn ghost', 'Plnění jednotek')
   su.onclick = () => { S.view = 'brigsum'; render() }
   const cp = el('button', 'btn ghost', 'Odkaz pro hráče')

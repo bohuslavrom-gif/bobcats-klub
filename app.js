@@ -1702,13 +1702,44 @@ function viewBrig(m) {
   m.appendChild(sum)
 }
 
+// orientační silniční vzdálenosti z Příbrami (km) — admin může přepsat ručně
+const KM_PRIBRAM = {
+  'Praha': 60, 'Plzeň': 65, 'Kladno': 90, 'Beroun': 35, 'Benešov': 65, 'Tábor': 75,
+  'Písek': 45, 'Strakonice': 70, 'České Budějovice': 105, 'Klatovy': 100, 'Rakovník': 90,
+  'Mladá Boleslav': 125, 'Kolín': 115, 'Kutná Hora': 125, 'Nymburk': 115, 'Jihlava': 135,
+  'Karlovy Vary': 135, 'Most': 140, 'Chomutov': 150, 'Ústí nad Labem': 150, 'Teplice': 155,
+  'Liberec': 170, 'Česká Lípa': 160, 'Děčín': 170, 'Cheb': 185, 'Sokolov': 160,
+  'Pardubice': 170, 'Hradec Králové': 180, 'Chrudim': 165, 'Jindřichův Hradec': 125,
+  'Trutnov': 230, 'Brno': 230, 'Znojmo': 230, 'Olomouc': 255, 'Prostějov': 260,
+  'Vyškov': 260, 'Přerov': 280, 'Šumperk': 290, 'Zlín': 300, 'Opava': 330,
+  'Ostrava': 360, 'Frýdek-Místek': 380, 'Havířov': 375, 'Karviná': 380, 'Uherské Hradiště': 300,
+}
+const kmToUnits = km => km <= 100 ? 1 : km <= 250 ? 2 : 3
+
 function openBrigEvent(ev) {
   const isNew = !ev
   modal(isNew ? 'Nová akce' : 'Upravit akci', `
-    <label>Název akce<input id="be_t" value="${esc(ev?.title)}" placeholder="Např. Turnaj U12 Příbram"></label>
+    ${isNew ? `<div class="row">
+      <label>Typ<select id="be_k"><option value="brigada">Brigáda / pomoc na akci</option><option value="doprava">Doprava na zápas</option></select></label>
+      <label>Datum<input id="be_d" type="date" value="${today()}"></label>
+    </div>
+    <div id="be_brig">
+      <label>Název akce<input id="be_t" placeholder="Např. Turnaj U12 Příbram"></label>
+    </div>
+    <div id="be_dop" style="display:none">
+      <div class="row">
+        <label>Kam se jede<input id="be_city" list="be_cities" placeholder="Např. Brno"><datalist id="be_cities">${Object.keys(KM_PRIBRAM).sort((a, b) => a.localeCompare(b, 'cs')).map(c => `<option value="${c}">`).join('')}</datalist></label>
+        <label>Km z Příbrami (jedním směrem)<input id="be_km" type="number" min="1" max="999" placeholder="auto"></label>
+      </div>
+      <div class="row">
+        <label>Kolik aut potřebujeme<input id="be_cars" type="number" min="1" max="10" value="3"></label>
+      </div>
+      <p class="hint" id="be_calc">Vyber město — km a jednotky se doplní samy (do 100 km = 1, 101–250 km = 2, nad 250 km = 3).</p>
+    </div>`
+    : `<label>Název akce<input id="be_t" value="${esc(ev?.title)}" placeholder="Např. Turnaj U12 Příbram"></label>
     <div class="row">
       <label>Datum<input id="be_d" type="date" value="${ev?.happened_on || today()}"></label>
-    </div>
+    </div>`}
     <label>Poznámka pro hráče<textarea id="be_n" rows="2" placeholder="Např. sraz v 8:00 u hřiště">${esc(ev?.note)}</textarea></label>
   `, [
     !isNew && { label: 'Smazat', cls: 'danger', act: async () => {
@@ -1718,15 +1749,55 @@ function openBrigEvent(ev) {
       closeModal(); await loadAll(); render(); toast('Akce smazána')
     } },
     { label: 'Uložit', cls: 'primary', act: async () => {
-      const up = { title: $('#be_t').value.trim(), happened_on: $('#be_d').value, note: $('#be_n').value.trim() || null }
+      const isDop = isNew && $('#be_k').value === 'doprava'
+      let title = $('#be_t').value.trim()
+      let km = 0, city = ''
+      if (isDop) {
+        city = $('#be_city').value.trim()
+        km = +$('#be_km').value || KM_PRIBRAM[city] || 0
+        if (!city) return toast('Vyplň, kam se jede', true)
+        if (!km) return toast('Pro tohle město neznám vzdálenost — doplň km ručně', true)
+        title = `Doprava — ${city}`
+      }
+      const up = { title, happened_on: $('#be_d').value, note: $('#be_n').value.trim() || null }
       if (!up.title || !up.happened_on) return toast('Vyplň název a datum', true)
       const q = isNew ? await sb.from('bc_brigade_event').insert({ ...up, created_by: S.me.id }).select().single()
         : await sb.from('bc_brigade_event').update(up).eq('id', ev.id)
       if (q.error) return toast(q.error.message, true)
+      if (isDop && q.data) {
+        const units = kmToUnits(km)
+        const n = Math.min(10, Math.max(1, +$('#be_cars').value || 3))
+        const rows = Array.from({ length: n }, (_, i) => ({ event_id: q.data.id, position: `řidič — ${city} (${km} km)`, units, sort: i + 1 }))
+        const { error } = await sb.from('bc_brigade_slot').insert(rows)
+        if (error) return toast(error.message, true)
+      }
       closeModal(); await loadAll(); render()
-      if (isNew && q.data) openBrigSlots(q.data)
+      if (isNew && q.data) {
+        if (isDop) toast(`Doprava ${city} založena — ${kmToUnits(km)} ${kmToUnits(km) === 1 ? 'jednotka' : 'jednotky'} za řidiče`)
+        else openBrigSlots(q.data)
+      }
     } },
   ].filter(Boolean))
+
+  if (isNew) {
+    const sync = () => {
+      const dop = $('#be_k').value === 'doprava'
+      $('#be_brig').style.display = dop ? 'none' : ''
+      $('#be_dop').style.display = dop ? '' : 'none'
+    }
+    $('#be_k').onchange = sync
+    const recalc = () => {
+      const city = $('#be_city').value.trim()
+      const known = KM_PRIBRAM[city]
+      if (known && !$('#be_km').dataset.manual) $('#be_km').value = known
+      const km = +$('#be_km').value || 0
+      $('#be_calc').textContent = km
+        ? `${city || 'Cesta'}: ${km} km jedním směrem → ${kmToUnits(km)} ${kmToUnits(km) === 1 ? 'jednotka' : kmToUnits(km) === 2 ? 'jednotky' : 'jednotky'} za řidiče.`
+        : 'Vyber město — km a jednotky se doplní samy (do 100 km = 1, 101–250 km = 2, nad 250 km = 3).'
+    }
+    $('#be_city').oninput = () => { delete $('#be_km').dataset.manual; recalc() }
+    $('#be_km').oninput = () => { $('#be_km').dataset.manual = '1'; recalc() }
+  }
 }
 
 function openBrigCopy(ev) {

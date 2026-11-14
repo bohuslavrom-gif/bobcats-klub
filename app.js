@@ -1797,10 +1797,12 @@ async function brigImport(file) {
   let iSur = -1, iFirst = -1, iFull = -1, iCat = -1, start = 0
   if (hdrIdx >= 0) {
     const hdr = rows[hdrIdx].map(norm)
+    // EOS export: sloupec "Celé jméno" (Příjmení Jméno) má přednost
+    iFull = hdr.findIndex(c => /cele\s*jmeno|full\s*name/.test(c))
     iSur = hdr.findIndex(c => /prijmen|surname|last/.test(c))
-    iFirst = hdr.findIndex(c => /^(krestni|jmeno|first)/.test(c) || (/jmeno/.test(c) && !/prijmen/.test(c)))
-    if (iSur < 0) iFull = hdr.findIndex(c => /jmeno|name/.test(c))
-    iCat = hdr.findIndex(c => /kategorie|tym|druzstvo|team|oddil/.test(c))
+    iFirst = hdr.findIndex(c => /^(krestni|first)/.test(c) || (/^jmeno/.test(c) && !/prijmen/.test(c)))
+    if (iFull < 0 && iSur < 0) iFull = hdr.findIndex(c => /jmeno|name/.test(c))
+    iCat = hdr.findIndex(c => /hlavni\s*tym|kategorie|druzstvo|team|oddil|(^|\s)tym/.test(c))
     start = hdrIdx + 1
   } else { iSur = 0; iFirst = 1 }
 

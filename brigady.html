@@ -21,10 +21,21 @@ body{font-family:'Montserrat',sans-serif;background:var(--bg);color:var(--ink);f
 .redbar{height:4px;background:var(--red)}
 .wrap{max-width:720px;margin:0 auto;padding:18px 16px 60px}
 .intro{font-size:13px;color:var(--grey);margin:4px 2px 18px;line-height:1.55}
-.card{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:16px;overflow:hidden}
-.card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-.card-h h3{font-family:'Barlow Condensed',sans-serif;font-size:21px;text-transform:uppercase;letter-spacing:.04em}
-.pill{font-size:11px;font-weight:700;background:#F2F2F2;border-radius:99px;padding:4px 10px;color:var(--grey);white-space:nowrap}
+.card{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:12px;overflow:hidden}
+.mhead{font-size:10.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--grey);font-weight:700;margin:22px 2px 10px}
+/* hlavička akce */
+.evh{display:flex;align-items:center;gap:14px;width:100%;border:0;background:none;padding:12px 16px;cursor:pointer;text-align:left;font-family:'Montserrat',sans-serif}
+.dt{flex:0 0 58px;background:var(--ink);color:#fff;border-radius:10px;text-align:center;padding:7px 0 8px;font-family:'Barlow Condensed',sans-serif;line-height:1}
+.dt b{display:block;font-size:26px;font-weight:800}
+.dt small{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#ccc;margin-top:2px}
+.et{flex:1;min-width:0}
+.et b{display:block;font-family:'Barlow Condensed',sans-serif;font-size:21px;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.et small{font-size:12px;color:var(--grey);font-weight:600}
+.et small.full{color:var(--ok)}
+.chev{flex:0 0 auto;color:var(--grey);font-size:13px;transition:.2s}
+.open .chev{transform:rotate(180deg)}
+.evb{display:none;border-top:1px solid var(--line)}
+.open .evb{display:block}
 .note{padding:9px 16px;background:#FAFAFA;border-bottom:1px solid var(--line);font-size:12px;color:var(--grey)}
 .slot{display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid #F4F4F4}
 .slot:last-child{border-bottom:0}
@@ -34,8 +45,28 @@ body{font-family:'Montserrat',sans-serif;background:var(--bg);color:var(--ink);f
 .slot .who{font-size:12.5px;font-weight:600;color:var(--ok);white-space:nowrap}
 .btn{border:0;border-radius:8px;background:var(--red);color:#fff;font-family:'Montserrat',sans-serif;font-weight:700;font-size:12px;padding:8px 14px;cursor:pointer;white-space:nowrap}
 .btn:active{transform:translateY(1px)}
+.btn.ghost{background:#F2F2F2;color:var(--ink)}
 .muted{font-size:12px;color:var(--grey);padding:13px 16px}
-.mhead{font-size:10.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--grey);font-weight:700;margin:22px 2px 10px}
+.loading{text-align:center;color:var(--grey);padding:50px 0}
+/* moje plnění */
+.me .mebar{display:flex;gap:10px;padding:14px 16px}
+.me input{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;font-family:'Montserrat',sans-serif;font-size:14px}
+.me input:focus{outline:none;border-color:var(--red)}
+.me h3{font-family:'Barlow Condensed',sans-serif;font-size:19px;text-transform:uppercase;letter-spacing:.04em;padding:13px 16px 0}
+.stats{display:flex;gap:10px;padding:4px 16px 14px}
+.stat{flex:1;background:#FAFAFA;border-radius:10px;padding:10px 12px;text-align:center}
+.stat b{display:block;font-family:'Barlow Condensed',sans-serif;font-size:24px}
+.stat.ok b{color:var(--ok)}
+.stat.bad b{color:var(--red)}
+.stat span{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--grey);font-weight:700}
+.mylist{border-top:1px solid var(--line)}
+.myrow{display:flex;align-items:center;gap:12px;padding:9px 16px;border-bottom:1px solid #F4F4F4;font-size:12.5px}
+.myrow:last-child{border-bottom:0}
+.myrow .d{flex:0 0 68px;color:var(--grey);font-weight:600}
+.myrow .p{flex:1}
+.myrow .u{font-weight:700}
+.myrow .u.plan{color:var(--grey);font-weight:600;font-size:11.5px}
+/* modal + toast */
 .mw{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
 .mc{background:#fff;border-radius:14px;width:100%;max-width:420px;padding:18px}
 .mc h3{font-family:'Barlow Condensed',sans-serif;font-size:22px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
@@ -43,18 +74,25 @@ body{font-family:'Montserrat',sans-serif;background:var(--bg);color:var(--ink);f
 .mc input{width:100%;border:1.5px solid var(--line);border-radius:8px;padding:11px 12px;font-family:'Montserrat',sans-serif;font-size:14px;margin-bottom:12px}
 .mc input:focus{outline:none;border-color:var(--red)}
 .mf{display:flex;gap:10px;justify-content:flex-end}
-.btn.ghost{background:#F2F2F2;color:var(--ink)}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:#111;color:#fff;padding:10px 18px;border-radius:99px;font-size:13px;opacity:0;transition:.25s;z-index:20;max-width:92vw;text-align:center}
 .toast.in{opacity:1;transform:translateX(-50%)}
 .toast.bad{background:var(--red)}
-.loading{text-align:center;color:var(--grey);padding:50px 0}
+@media (max-width:430px){.stats{flex-wrap:wrap}.stat{flex:1 1 40%}}
 </style>
 </head>
 <body>
 <div class="top"><img src="./logo-red.png" alt=""><div><b>Příbram Bobcats</b><span>Zápis na brigády a dopravu</span></div></div>
 <div class="redbar"></div>
 <div class="wrap">
-  <p class="intro">Vyber si volnou pozici a zapiš se celým jménem (u mládeže jménem hráče). Jedna pozice = jedna jednotka klubových povinností, doprava na vzdálenější zápasy platí za dvě až tři — viz popis u pozice. Každý člen plní 3 jednotky na jaře a 3 na podzim.</p>
+  <p class="intro">Klikni na akci, vyber volnou pozici a zapiš se celým jménem (u mládeže jménem hráče). Jedna pozice = jedna jednotka klubových povinností; doprava na vzdálenější zápasy platí za dvě až tři. Každý člen plní 3 jednotky na jaře a 3 na podzim.</p>
+
+  <div class="card me">
+    <h3>Moje plnění</h3>
+    <div class="mebar"><input id="me_nm" placeholder="Příjmení a jméno" autocomplete="name" maxlength="60"><button class="btn" id="me_go">Zobrazit</button></div>
+    <div id="me_out"></div>
+  </div>
+
+  <div class="mhead">Nadcházející akce</div>
   <div id="app"><div class="loading">Načítám…</div></div>
 </div>
 <script type="module">
@@ -63,8 +101,10 @@ const sb = createClient('https://xrcgxanzbzflvpvmygrd.supabase.co', 'sb_publisha
 
 const $app = document.getElementById('app')
 const esc = s => (s ?? '').toString().replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]))
+const MON = ['led', 'úno', 'bře', 'dub', 'kvě', 'čvn', 'čvc', 'srp', 'zář', 'říj', 'lis', 'pro']
 const fmtDate = d => { const x = new Date(d + 'T00:00:00'); return `${x.getDate()}. ${x.getMonth() + 1}. ${x.getFullYear()}` }
 const today = () => new Date().toISOString().slice(0, 10)
+const openSet = new Set()
 
 function toast(msg, bad) {
   const t = document.createElement('div')
@@ -85,51 +125,89 @@ async function load() {
   if (ev.error || sl.error) { $app.innerHTML = '<div class="loading">Nepodařilo se načíst data. Zkus obnovit stránku.</div>'; return }
   events = ev.data || []; slots = sl.data || []
   render()
+  renderMe()
 }
 
 function render() {
   const t = today()
-  const fut = events.filter(e => e.happened_on >= t)
-  const past = events.filter(e => e.happened_on < t).reverse()
-  if (!events.length) { $app.innerHTML = '<div class="loading">Zatím tu nejsou žádné akce.</div>'; return }
+  const fut = events.filter(e => e.happened_on >= t)   // řazeno vzestupně podle data
+  if (!fut.length) { $app.innerHTML = '<div class="loading">Teď tu není žádná akce k zápisu.</div>'; return }
+  if (!openSet.size && fut.length) openSet.add(fut[0].id)
   $app.innerHTML = ''
 
-  const card = (e, old) => {
+  fut.forEach(e => {
     const list = slots.filter(s => s.event_id === e.id)
     const free = list.filter(s => !s.person).length
+    const x = new Date(e.happened_on + 'T00:00:00')
     const c = document.createElement('div')
-    c.className = 'card'
-    const open = !e.locked && !old
-    c.innerHTML = `<div class="card-h"><h3>${esc(e.title)}</h3><span class="pill">${fmtDate(e.happened_on)}${e.locked ? ' · zápis uzavřen' : old ? ' · proběhlo' : ` · ${free} volných`}</span></div>`
-      + (e.note ? `<div class="note">${esc(e.note)}</div>` : '')
-    if (!list.length) c.insertAdjacentHTML('beforeend', '<div class="muted">Pozice zatím nejsou vypsané.</div>')
+    c.className = 'card' + (openSet.has(e.id) ? ' open' : '')
+    const sub = e.locked ? 'zápis uzavřen' : !list.length ? 'pozice se připravují' : free ? `${free} ${free === 1 ? 'volné místo' : free < 5 ? 'volná místa' : 'volných míst'}` : 'obsazeno — díky!'
+    c.innerHTML = `<button class="evh">
+        <span class="dt"><b>${x.getDate()}.</b><small>${MON[x.getMonth()]}</small></span>
+        <span class="et"><b>${esc(e.title)}</b><small class="${!e.locked && list.length && !free ? 'full' : ''}">${sub}</small></span>
+        <span class="chev">▼</span>
+      </button>
+      <div class="evb">${e.note ? `<div class="note">${esc(e.note)}</div>` : ''}</div>`
+    const body = c.querySelector('.evb')
+    if (!list.length) body.insertAdjacentHTML('beforeend', '<div class="muted">Pozice zatím nejsou vypsané.</div>')
     list.forEach(s => {
       const row = document.createElement('div')
       row.className = 'slot'
       row.innerHTML = `<div class="sb"><b>${esc(s.position)}</b>${s.units > 1 ? `<small>${s.units} jednotky</small>` : ''}</div>`
       if (s.person) row.insertAdjacentHTML('beforeend', `<span class="who">${esc(s.person)}</span>`)
-      else if (open) {
+      else if (!e.locked) {
         const b = document.createElement('button')
         b.className = 'btn'
         b.textContent = 'Zapsat se'
-        b.onclick = () => claim(s, e)
+        b.onclick = ev2 => { ev2.stopPropagation(); claim(s, e) }
         row.appendChild(b)
       } else row.insertAdjacentHTML('beforeend', '<span class="who" style="color:var(--grey)">volné</span>')
-      c.appendChild(row)
+      body.appendChild(row)
     })
-    return c
-  }
-
-  fut.forEach(e => $app.appendChild(card(e, false)))
-  if (past.length) {
-    const mh = document.createElement('div')
-    mh.className = 'mhead'
-    mh.textContent = 'Proběhlé akce'
-    $app.appendChild(mh)
-    past.forEach(e => $app.appendChild(card(e, true)))
-  }
+    c.querySelector('.evh').onclick = () => {
+      openSet.has(e.id) ? openSet.delete(e.id) : openSet.add(e.id)
+      c.classList.toggle('open')
+    }
+    $app.appendChild(c)
+  })
 }
 
+/* ---------- moje plnění ---------- */
+const meOut = document.getElementById('me_out')
+const meNm = document.getElementById('me_nm')
+try { const p = localStorage.getItem('bc_name'); if (p) meNm.value = p } catch {}
+
+function renderMe() {
+  const name = meNm.value.trim()
+  if (!name) { meOut.innerHTML = '' ; return }
+  const n = name.toLowerCase()
+  const t = today()
+  const year = new Date().getFullYear()
+  const evOf = id => events.find(e => e.id === id)
+  const mine = slots
+    .filter(s => s.person && s.person.trim().toLowerCase() === n)
+    .map(s => ({ ...s, ev: evOf(s.event_id) }))
+    .filter(s => s.ev && +s.ev.happened_on.slice(0, 4) === year)
+    .sort((a, b) => a.ev.happened_on < b.ev.happened_on ? -1 : 1)
+  const jaro = mine.filter(s => +s.ev.happened_on.slice(5, 7) <= 6).reduce((x, s) => x + s.units, 0)
+  const podzim = mine.filter(s => +s.ev.happened_on.slice(5, 7) > 6).reduce((x, s) => x + s.units, 0)
+  const zbyva = Math.max(0, 3 - jaro) + Math.max(0, 3 - podzim)
+  meOut.innerHTML = `
+    <div class="stats">
+      <div class="stat ${jaro >= 3 ? 'ok' : ''}"><b>${jaro} / 3</b><span>jaro</span></div>
+      <div class="stat ${podzim >= 3 ? 'ok' : ''}"><b>${podzim} / 3</b><span>podzim</span></div>
+      <div class="stat ${zbyva ? 'bad' : 'ok'}"><b>${zbyva}</b><span>zbývá ${year}</span></div>
+    </div>
+    ${mine.length ? `<div class="mylist">${mine.map(s => `
+      <div class="myrow"><span class="d">${fmtDate(s.ev.happened_on)}</span>
+        <span class="p">${esc(s.ev.title)} — ${esc(s.position)}</span>
+        <span class="u ${s.ev.happened_on >= t ? 'plan' : ''}">${s.ev.happened_on >= t ? 'zapsáno' : '+' + s.units}</span></div>`).join('')}</div>`
+      : '<div class="muted">Pod tímhle jménem zatím žádný zápis v roce ' + year + ' není.</div>'}`
+}
+document.getElementById('me_go').onclick = () => { try { if (meNm.value.trim()) localStorage.setItem('bc_name', meNm.value.trim()) } catch {}; renderMe() }
+meNm.onkeydown = e => { if (e.key === 'Enter') document.getElementById('me_go').click() }
+
+/* ---------- zápis ---------- */
 function claim(slot, ev) {
   const w = document.createElement('div')
   w.className = 'mw'
@@ -142,8 +220,7 @@ function claim(slot, ev) {
   w.onclick = e => { if (e.target === w) close() }
   w.querySelector('#cn').onclick = close
   const inp = w.querySelector('#nm')
-  const prev = localStorage.getItem('bc_name')
-  if (prev) inp.value = prev
+  try { const prev = localStorage.getItem('bc_name'); if (prev) inp.value = prev } catch {}
   inp.focus()
   const go = async () => {
     const name = inp.value.trim()
@@ -151,8 +228,11 @@ function claim(slot, ev) {
     const { data, error } = await sb.rpc('bc_claim_slot', { p_slot: slot.id, p_name: name })
     if (error) { toast(error.message, true); return }
     close()
-    if (data) { try { localStorage.setItem('bc_name', name) } catch {} ; toast('Zapsáno. Díky, že pomáháš klubu!') }
-    else toast('Tohle místo už mezitím někdo obsadil nebo je zápis uzavřený.', true)
+    if (data) {
+      try { localStorage.setItem('bc_name', name) } catch {}
+      meNm.value = name
+      toast('Zapsáno. Díky, že pomáháš klubu!')
+    } else toast('Tohle místo už mezitím někdo obsadil nebo je zápis uzavřený.', true)
     await load()
   }
   w.querySelector('#ok').onclick = go

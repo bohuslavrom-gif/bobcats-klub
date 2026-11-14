@@ -1560,15 +1560,28 @@ function viewBrig(m) {
       const r = el('div', 'prow2')
       r.innerHTML = `<div><b>${esc(s.position)}${s.units > 1 ? ` · ${s.units} jednotky` : ''}</b>
         <span>${s.person ? esc(s.person) : 'volné místo'}</span></div>`
+      const isPast = ev.happened_on < t
       if (s.person) {
-        const un = el('button', 'btn ghost sm', 'Uvolnit')
+        const un = el('button', 'btn ghost sm', isPast ? 'Nedorazil' : 'Uvolnit')
         un.onclick = async () => {
-          if (!confirm(`Uvolnit pozici „${s.position}" (${s.person})?`)) return
+          if (!confirm(isPast
+            ? `${s.person} nedorazil? Jméno se odebere a jednotka se mu nezapočítá.`
+            : `Uvolnit pozici „${s.position}" (${s.person})?`)) return
           const { error } = await sb.from('bc_brigade_slot').update({ person: null, claimed_at: null }).eq('id', s.id)
           if (error) return toast(error.message, true)
           await loadAll(); render()
         }
         r.appendChild(un)
+      } else {
+        const asg = el('button', 'btn ghost sm', 'Zapsat')
+        asg.onclick = async () => {
+          const name = prompt(`Koho zapsat na pozici „${s.position}"? (příjmení a jméno)`)
+          if (!name || !name.trim()) return
+          const { error } = await sb.from('bc_brigade_slot').update({ person: name.trim(), claimed_at: new Date().toISOString() }).eq('id', s.id)
+          if (error) return toast(error.message, true)
+          await loadAll(); render()
+        }
+        r.appendChild(asg)
       }
       const dl = el('button', 'btn ghost sm', '×')
       dl.title = 'Smazat pozici'
@@ -1591,7 +1604,8 @@ function viewBrig(m) {
       await loadAll(); render()
     }
     const edb = el('button', 'lnk', 'Upravit'); edb.style.marginLeft = '14px'; edb.onclick = () => openBrigEvent(ev)
-    ml.append(ap, lk, edb)
+    const cpb = el('button', 'lnk', 'Kopírovat'); cpb.style.marginLeft = '14px'; cpb.onclick = () => openBrigCopy(ev)
+    ml.append(ap, lk, edb, cpb)
     sec.appendChild(ml)
     return sec
   }
@@ -1661,6 +1675,32 @@ function openBrigEvent(ev) {
       if (isNew && q.data) openBrigSlots(q.data)
     } },
   ].filter(Boolean))
+}
+
+function openBrigCopy(ev) {
+  const slots = brigSlotsOf(ev.id)
+  modal(`Kopírovat akci — ${ev.title}`, `
+    <label>Název nové akce<input id="bc_t" value="${esc(ev.title)}"></label>
+    <div class="row">
+      <label>Datum<input id="bc_d" type="date" value="${today()}"></label>
+    </div>
+    <p class="hint">Zkopíruje se ${slots.length} pozic (bez zapsaných jmen)${ev.note ? ' i poznámka' : ''}.</p>
+  `, [
+    { label: 'Zrušit', act: closeModal },
+    { label: 'Kopírovat', cls: 'primary', act: async () => {
+      const title = $('#bc_t').value.trim()
+      const date = $('#bc_d').value
+      if (!title || !date) return toast('Vyplň název a datum', true)
+      const q = await sb.from('bc_brigade_event').insert({ title, happened_on: date, note: ev.note, created_by: S.me.id }).select().single()
+      if (q.error) return toast(q.error.message, true)
+      if (slots.length) {
+        const rows = slots.map((s, i) => ({ event_id: q.data.id, position: s.position, units: s.units, sort: i + 1 }))
+        const { error } = await sb.from('bc_brigade_slot').insert(rows)
+        if (error) return toast(error.message, true)
+      }
+      closeModal(); await loadAll(); render(); toast('Akce zkopírována')
+    } },
+  ])
 }
 
 function openBrigSlots(ev) {

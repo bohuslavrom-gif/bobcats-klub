@@ -13,6 +13,7 @@ const S = {
   docFilter: { team: '', q: '' },
   mktFilter: { status: 'plan', rubric: '' },
   budgetYear: null, budgetView: 'category', budgetTeam: '',
+  brigEvents: [], brigSlots: [], brigYear: null,
   cal: new Date(),
 }
 
@@ -93,7 +94,7 @@ const fileIcon = n => {
 
 /* ============ data ============ */
 async function loadAll() {
-  const [pr, tm, tk, ev, cl, ci, ms, nt, dc, pe, ru, po, bu, bi, be] = await Promise.all([
+  const [pr, tm, tk, ev, cl, ci, ms, nt, dc, pe, ru, po, bu, bi, be, bge, bgs] = await Promise.all([
     sb.from('bc_profile').select('*').order('full_name'),
     sb.from('bc_team').select('*').order('sort'),
     sb.from('bc_task').select('*').order('due_date', { nullsFirst: false }),
@@ -109,7 +110,10 @@ async function loadAll() {
     sb.from('bc_budget').select('*').order('year', { ascending: false }),
     sb.from('bc_budget_item').select('*').order('sort'),
     sb.from('bc_budget_entry').select('*').order('happened_on', { ascending: false }),
+    sb.from('bc_brigade_event').select('*').order('happened_on'),
+    sb.from('bc_brigade_slot').select('*').order('sort'),
   ])
+  S.brigEvents = bge.data || []; S.brigSlots = bgs.data || []
   S.budgets = bu.data || []; S.bitems = bi.data || []; S.bentries = be.data || []
   if (!S.budgetYear || !S.budgets.some(b => b.year === S.budgetYear)) S.budgetYear = S.budgets[0]?.year || new Date().getFullYear()
   S.rubrics = ru.data || []; S.posts = po.data || []
@@ -247,7 +251,7 @@ function renderPending() {
 
 /* ============ layout ============ */
 const NAV = [
-  ['dash', 'Přehled'], ['tasks', 'Úkoly'], ['cal', 'Kalendář'], ['docs', 'Dokumenty'], ['budget', 'Rozpočet'], ['mkt', 'Marketing'], ['check', 'Checklisty'], ['people', 'Lidé a týmy'],
+  ['dash', 'Přehled'], ['tasks', 'Úkoly'], ['cal', 'Kalendář'], ['docs', 'Dokumenty'], ['brig', 'Brigády'], ['budget', 'Rozpočet'], ['mkt', 'Marketing'], ['check', 'Checklisty'], ['people', 'Lidé a týmy'],
 ]
 function renderShell() {
   document.body.className = ''
@@ -321,6 +325,7 @@ function render() {
   if (S.view === 'docs') viewDocs(m)
   if (S.view === 'mkt') { if (S.isMkt) viewMkt(m); else { S.view = 'dash'; return render() } }
   if (S.view === 'budget') viewBudget(m)
+  if (S.view === 'brig') viewBrig(m)
   if (S.view === 'check') { if (S.seesAll) viewCheck(m); else { S.view = 'dash'; return render() } }
   if (S.view === 'people') { if (S.seesAll) viewPeople(m); else { S.view = 'dash'; return render() } }
 }
@@ -1518,6 +1523,172 @@ function viewPeople(m) {
 }
 
 /* ============ modal ============ */
+/* ============ brigády ============ */
+const BRIG_URL = 'https://app.bobcats.cz/brigady.html'
+const brigSlotsOf = id => S.brigSlots.filter(s => s.event_id === id)
+
+function viewBrig(m) {
+  const h = el('div', 'head')
+  h.innerHTML = `<h2>Brigády</h2><p>Vypiš akce a pozice — hráči a rodiče se zapisují sami, bez přihlášení.</p>`
+  const cp = el('button', 'btn ghost', 'Odkaz pro hráče')
+  cp.onclick = async () => {
+    try { await navigator.clipboard.writeText(BRIG_URL); toast('Odkaz zkopírován do schránky') }
+    catch { prompt('Odkaz pro hráče:', BRIG_URL) }
+  }
+  const ab = el('button', 'btn primary', '+ Akce')
+  ab.onclick = () => openBrigEvent(null)
+  h.append(cp, ab)
+  m.appendChild(h)
+
+  if (!S.brigEvents.length) {
+    m.appendChild(el('section', 'card', '<div class="empty">Zatím žádná akce. Založ první tlačítkem + Akce.</div>'))
+    return
+  }
+
+  const t = today()
+  const fut = S.brigEvents.filter(e => e.happened_on >= t)
+  const past = S.brigEvents.filter(e => e.happened_on < t).slice().reverse()
+
+  const evCard = ev => {
+    const slots = brigSlotsOf(ev.id)
+    const free = slots.filter(s => !s.person).length
+    const sec = el('section', 'card')
+    sec.appendChild(el('div', 'card-h', `<h3>${esc(ev.title)}</h3><span class="pill">${fmtDate(ev.happened_on)}${ev.locked ? ' · uzavřená' : slots.length ? ` · ${free} volných z ${slots.length}` : ''}</span>`))
+    if (ev.note) sec.appendChild(el('div', 'mhead', esc(ev.note)))
+    if (!slots.length) sec.appendChild(el('div', 'empty', 'Zatím bez pozic — přidej je tlačítkem níž.'))
+    slots.forEach(s => {
+      const r = el('div', 'prow2')
+      r.innerHTML = `<div><b>${esc(s.position)}${s.units > 1 ? ` · ${s.units} jednotky` : ''}</b>
+        <span>${s.person ? esc(s.person) : 'volné místo'}</span></div>`
+      if (s.person) {
+        const un = el('button', 'btn ghost sm', 'Uvolnit')
+        un.onclick = async () => {
+          if (!confirm(`Uvolnit pozici „${s.position}" (${s.person})?`)) return
+          const { error } = await sb.from('bc_brigade_slot').update({ person: null, claimed_at: null }).eq('id', s.id)
+          if (error) return toast(error.message, true)
+          await loadAll(); render()
+        }
+        r.appendChild(un)
+      }
+      const dl = el('button', 'btn ghost sm', '×')
+      dl.title = 'Smazat pozici'
+      dl.onclick = async () => {
+        if (!confirm(`Smazat pozici „${s.position}"${s.person ? ' včetně zapsaného ' + s.person : ''}?`)) return
+        const { error } = await sb.from('bc_brigade_slot').delete().eq('id', s.id)
+        if (error) return toast(error.message, true)
+        await loadAll(); render()
+      }
+      r.appendChild(dl)
+      sec.appendChild(r)
+    })
+    const ml = el('div', 'moreline')
+    const ap = el('button', 'lnk', '+ Pozice'); ap.onclick = () => openBrigSlots(ev)
+    const lk = el('button', 'lnk', ev.locked ? 'Odemknout zápis' : 'Uzavřít zápis')
+    lk.style.marginLeft = '14px'
+    lk.onclick = async () => {
+      const { error } = await sb.from('bc_brigade_event').update({ locked: !ev.locked }).eq('id', ev.id)
+      if (error) return toast(error.message, true)
+      await loadAll(); render()
+    }
+    const edb = el('button', 'lnk', 'Upravit'); edb.style.marginLeft = '14px'; edb.onclick = () => openBrigEvent(ev)
+    ml.append(ap, lk, edb)
+    sec.appendChild(ml)
+    return sec
+  }
+
+  fut.forEach(ev => m.appendChild(evCard(ev)))
+  if (past.length) {
+    m.appendChild(el('div', 'mhead', 'PROBĚHLÉ AKCE'))
+    past.forEach(ev => m.appendChild(evCard(ev)))
+  }
+
+  // souhrn plnění
+  const years = [...new Set(S.brigEvents.map(e => +e.happened_on.slice(0, 4)))].sort((a, b) => b - a)
+  if (!years.length) return
+  if (!S.brigYear || !years.includes(S.brigYear)) S.brigYear = years[0]
+  const evYear = id => +(S.brigEvents.find(e => e.id === id)?.happened_on || '0').slice(0, 4)
+  const isSpring = id => +(S.brigEvents.find(e => e.id === id)?.happened_on || '').slice(5, 7) <= 6
+  const per = {}
+  S.brigSlots.filter(s => s.person && evYear(s.event_id) === S.brigYear).forEach(s => {
+    const k = s.person.trim()
+    per[k] = per[k] || { jaro: 0, podzim: 0 }
+    per[k][isSpring(s.event_id) ? 'jaro' : 'podzim'] += s.units
+  })
+  const names = Object.keys(per).sort((a, b) => a.localeCompare(b, 'cs'))
+  const sum = el('section', 'card')
+  const ysel = years.length > 1 ? `<select id="bgy">${years.map(y => `<option value="${y}" ${y === S.brigYear ? 'selected' : ''}>${y}</option>`).join('')}</select>` : String(S.brigYear)
+  sum.appendChild(el('div', 'card-h', `<h3>Plnění jednotek</h3><span class="pill">${names.length} lidí · rok ${S.brigYear}</span>`))
+  if (years.length > 1) {
+    const bar = el('div', 'moreline', ysel)
+    sum.appendChild(bar)
+    $('#bgy', bar).onchange = e => { S.brigYear = +e.target.value; render() }
+  }
+  if (!names.length) sum.appendChild(el('div', 'empty', 'Zatím se nikdo nezapsal.'))
+  names.forEach(n => {
+    const p = per[n]
+    const owe = (Math.max(0, 3 - p.jaro) + Math.max(0, 3 - p.podzim)) * 500
+    const r = el('div', 'prow2')
+    r.innerHTML = `<div><b>${esc(n)}</b><span>jaro ${p.jaro} / 3 · podzim ${p.podzim} / 3</span></div>
+      <b style="${owe ? 'color:var(--red)' : 'color:var(--ok)'}">${owe ? 'doplatek ' + czk(owe) : 'splněno'}</b>`
+    sum.appendChild(r)
+  })
+  sum.appendChild(el('div', 'moreline', '<span style="font-size:11.5px;color:var(--grey)">Doplatek = (chybějící jednotky jaro + podzim) × 500 Kč podle směrnice č. 3/2027. Počítá se jen z toho, co je zapsané tady — trenéři a výjimky se řeší mimo.</span>'))
+  m.appendChild(sum)
+}
+
+function openBrigEvent(ev) {
+  const isNew = !ev
+  modal(isNew ? 'Nová akce' : 'Upravit akci', `
+    <label>Název akce<input id="be_t" value="${esc(ev?.title)}" placeholder="Např. Turnaj U12 Příbram"></label>
+    <div class="row">
+      <label>Datum<input id="be_d" type="date" value="${ev?.happened_on || today()}"></label>
+    </div>
+    <label>Poznámka pro hráče<textarea id="be_n" rows="2" placeholder="Např. sraz v 8:00 u hřiště">${esc(ev?.note)}</textarea></label>
+  `, [
+    !isNew && { label: 'Smazat', cls: 'danger', act: async () => {
+      if (!confirm('Smazat akci včetně všech pozic a zápisů?')) return
+      const { error } = await sb.from('bc_brigade_event').delete().eq('id', ev.id)
+      if (error) return toast(error.message, true)
+      closeModal(); await loadAll(); render(); toast('Akce smazána')
+    } },
+    { label: 'Uložit', cls: 'primary', act: async () => {
+      const up = { title: $('#be_t').value.trim(), happened_on: $('#be_d').value, note: $('#be_n').value.trim() || null }
+      if (!up.title || !up.happened_on) return toast('Vyplň název a datum', true)
+      const q = isNew ? await sb.from('bc_brigade_event').insert({ ...up, created_by: S.me.id }).select().single()
+        : await sb.from('bc_brigade_event').update(up).eq('id', ev.id)
+      if (q.error) return toast(q.error.message, true)
+      closeModal(); await loadAll(); render()
+      if (isNew && q.data) openBrigSlots(q.data)
+    } },
+  ].filter(Boolean))
+}
+
+function openBrigSlots(ev) {
+  modal(`Přidat pozice — ${ev.title}`, `
+    <label>Pozice<input id="bs_p" placeholder="Např. bufet, pořadatel, časomíra, doprava Brno"></label>
+    <div class="row">
+      <label>Jednotky za pozici<select id="bs_u">${[1, 2, 3].map(u => `<option value="${u}">${u}${u === 1 ? ' (brigáda, doprava do 100 km)' : u === 2 ? ' (doprava 101–250 km)' : ' (doprava nad 250 km)'}</option>`).join('')}</select></label>
+      <label>Počet míst<input id="bs_n" type="number" min="1" max="20" value="2"></label>
+    </div>
+    <p class="hint">Každé místo se na veřejné stránce zobrazí jako samostatný řádek, kam se zapíše jeden člověk.</p>
+  `, [
+    { label: 'Hotovo', act: closeModal },
+    { label: 'Přidat', cls: 'primary', act: async () => {
+      const pos = $('#bs_p').value.trim()
+      const units = +$('#bs_u').value
+      const n = Math.min(20, Math.max(1, +$('#bs_n').value || 1))
+      if (!pos) return toast('Vyplň název pozice', true)
+      const base = brigSlotsOf(ev.id).length
+      const rows = Array.from({ length: n }, (_, i) => ({ event_id: ev.id, position: pos, units, sort: base + i + 1 }))
+      const { error } = await sb.from('bc_brigade_slot').insert(rows)
+      if (error) return toast(error.message, true)
+      await loadAll(); render()
+      toast(`Přidáno: ${pos} ×${n}`)
+      $('#bs_p').value = ''; $('#bs_n').value = 2; $('#bs_u').value = 1; $('#bs_p').focus()
+    } },
+  ])
+}
+
 function modal(title, body, actions) {
   closeModal()
   const w = el('div', 'mw'); w.id = 'mw'
